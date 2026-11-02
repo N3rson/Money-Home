@@ -63,6 +63,13 @@ describe('mortgage', () => {
     expect(st.ownedRatio).toBeGreaterThan(0.2);
   });
 
+  it('a bank anchor with remaining installments fixes the end date', () => {
+    const st = mortgageStatus({ ...loan, balance: { amount: 48000000, month: '2026-10', remaining: 300 } }, new Map(), '2026-10');
+    expect(st.balance).toBe(48000000);
+    expect(st.actual.endMonth).toBe('2051-10'); // 300 installments after October 2026
+    expect(st.savedMonths).toBe(50);
+  });
+
   it('a bank balance anchor resets the projection', () => {
     const st = mortgageStatus({ ...loan, balance: { amount: 45000000, month: '2026-10' } }, new Map(), '2026-10');
     expect(st.balance).toBe(45000000);

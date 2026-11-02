@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import qrcode from 'qrcode-generator';
-import type { Entry, EntryType, MonthKey, MortgageParams, Person } from '../model/types';
-import { INCOME_CATEGORIES, TYPE_LABEL } from '../model/defaults';
+import type { Entry, EntryType, Household, MonthKey, MortgageParams, Person, SeedFile } from '../model/types';
+import { INCOME_CATEGORIES, TYPE_LABEL, householdFromSeed } from '../model/defaults';
 import { liveEntries, billsToCopy } from '../model/calc';
 import {
   addBillCategory,
   addEntries,
   deleteEntries,
+  finishWelcome,
+  getState,
+  importHousehold,
   renameBillCategory,
   setCategoryArchived,
   setMe,
@@ -22,6 +25,11 @@ import { amountInputValue, formatPLN, parseAmount } from '../lib/money';
 import { addMonths, currentMonth, monthLabel, MONTHS_LOCATIVE, parseMonth } from '../lib/months';
 import { Chips, Field, Hanko, MonthNav, Segmented, Sheet, Stepper, Switch } from './components';
 import { Icon, billIcon } from './icons';
+import { Scanner } from './scanner';
+import { decodeInvite, encodeInvite, looksLikeToken, parseRepo } from '../sync/invite';
+import { mergeHouseholds, parseHousehold } from '../sync/merge';
+import { connect as connectSync } from '../sync/engine';
+import { APP_URL, DATA_PATH, DEFAULT_REPO, TOKEN_URL } from '../config';
 
 // ------------------------------------------------------------------ host
 
@@ -30,6 +38,8 @@ type SheetState =
   | { kind: 'copyBills'; month: MonthKey }
   | { kind: 'invite' }
   | { kind: 'join' }
+  | { kind: 'connect' }
+  | { kind: 'whoami' }
   | { kind: 'mortgage' }
   | { kind: 'people' }
   | { kind: 'categories' };
@@ -45,6 +55,9 @@ export const openEntry = (opts: { id?: string; type?: EntryType; month?: MonthKe
 export const openCopyBills = (month: MonthKey) => setSheet({ kind: 'copyBills', month });
 export const openInvite = () => setSheet({ kind: 'invite' });
 export const openJoin = () => setSheet({ kind: 'join' });
+export const openConnect = () => setSheet({ kind: 'connect' });
+export const openWhoAmI = () => setSheet({ kind: 'whoami' });
+export const isSheetOpen = () => current !== null;
 export const openMortgage = () => setSheet({ kind: 'mortgage' });
 export const openPeople = () => setSheet({ kind: 'people' });
 export const openCategories = () => setSheet({ kind: 'categories' });
@@ -68,6 +81,10 @@ export function SheetHost() {
       return <Invite />;
     case 'join':
       return <Join />;
+    case 'connect':
+      return <Connect />;
+    case 'whoami':
+      return <WhoAmI />;
     case 'mortgage':
       return <MortgageEditor />;
     case 'people':
@@ -408,13 +425,25 @@ function QR({ text }: { text: string }) {
 }
 
 function demoInvite(): string {
-  const payload = { v: 1, repo: 'N3rson/money-home-dane', file: 'budzet.json', token: 'PROTOTYP-BEZ-TOKENU' };
-  return 'MH1.' + btoa(JSON.stringify(payload)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  return encodeInvite({ owner: 'N3rson', repo: 'money-home-dane', path: DATA_PATH, token: 'PROTOTYP-BEZ-TOKENU' });
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function Invite() {
-  const code = useMemo(demoInvite, []);
+  const h = useStore((s) => s.household);
+  const me = useStore((s) => s.prefs.me);
+  const cfg = useStore((s) => s.sync.config);
+  const code = useMemo(() => (cfg ? encodeInvite(cfg) : demoInvite()), [cfg]);
   const [copied, setCopied] = useState(false);
+  const partner = h.people.find((p) => p.id !== me)?.name ?? 'partnerka';
   return (
     <Sheet title="Połącz drugi telefon" onClose={closeSheet}>
       {__PROTOTYPE__ && (
@@ -429,74 +458,243 @@ function Invite() {
       <ol class="steps">
         <li>
           <span>
-            Na drugim telefonie zainstaluj <strong>Money Home</strong> (Android: plik APK, iPhone: Safari → Udostępnij → <strong>Do ekranu początkowego</strong>).
+            Na drugim telefonie zainstaluj <strong>Money Home</strong>. iPhone: otwórz w Safari <strong>{APP_URL.replace('https://', '')}</strong>, potem Udostępnij → <strong>Do ekranu początkowego</strong>.
           </span>
         </li>
         <li>
           <span>
-            Otwórz aplikację i wybierz <strong>Dołącz do domu</strong>.
+            Otwórz aplikację z ikony i wybierz <strong>Dołączam do domu</strong>.
           </span>
         </li>
         <li>
-          <span>Zeskanuj ten kod albo wklej kod tekstowy poniżej. Od teraz oba telefony zapisują do jednego pliku.</span>
+          <span>Zeskanuj ten kod. Od teraz oba telefony zapisują do jednego pliku.</span>
         </li>
       </ol>
       <div class="field">
-        <span class="label">Kod tekstowy</span>
+        <span class="label">Albo wyślij kod tekstowy</span>
         <div class="code-box">{code}</div>
         <button
           class="btn secondary sm"
           type="button"
           onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(code);
-              setCopied(true);
-            } catch {
-              setCopied(false);
-              toast('Zaznacz kod i skopiuj go ręcznie');
-            }
+            if (await copyText(code)) setCopied(true);
+            else toast('Zaznacz kod i skopiuj go ręcznie');
           }}
         >
           <Icon name={copied ? 'check' : 'copy'} size={18} /> {copied ? 'Skopiowano' : 'Kopiuj kod'}
         </button>
-        <span class="hint">Kod daje pełny dostęp do budżetu. Wyślij go tylko partnerowi/partnerce.</span>
+        <span class="hint">Kod daje pełny dostęp do budżetu. Pokaż go tylko: {partner}.</span>
       </div>
     </Sheet>
   );
 }
 
+/** First phone: connect with a GitHub token. */
+function Connect() {
+  const cfg = useStore((s) => s.sync.config);
+  const [repo, setRepo] = useState(cfg ? `${cfg.owner}/${cfg.repo}` : DEFAULT_REPO);
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const parsedRepo = parseRepo(repo);
+  const tokenOk = looksLikeToken(token);
+
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    if (!parsedRepo) return setError('Wpisz repozytorium jako właściciel/nazwa, np. N3rson/money-home-dane');
+    if (!tokenOk) return setError('To nie wygląda na token GitHuba (zaczyna się od github_pat_)');
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await connectSync({ ...parsedRepo, path: DATA_PATH, token: token.trim() });
+      finishWelcome();
+      closeSheet();
+      toast(r.entries ? `Połączono · ${r.entries} wpisów` : 'Połączono · zaczynacie od zera');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet title="Połącz z GitHubem" onClose={closeSheet}>
+      <form onSubmit={submit} style={{ display: 'grid', gap: '18px' }} noValidate>
+        <p class="soft">Budżet zapisuje się w Waszym prywatnym repozytorium. Aplikacja potrzebuje tokenu z dostępem tylko do niego.</p>
+        <Field label="Repozytorium" id="c-repo">
+          <input id="c-repo" class="input" autoCapitalize="off" autoCorrect="off" spellcheck={false} value={repo} onInput={(e) => setRepo((e.target as HTMLInputElement).value)} />
+        </Field>
+        <Field label="Token" id="c-token" hint="Zapisuje się tylko na tym telefonie.">
+          <input
+            id="c-token"
+            class="input"
+            data-autofocus
+            type="password"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellcheck={false}
+            placeholder="github_pat_…"
+            value={token}
+            onInput={(e) => setToken((e.target as HTMLInputElement).value)}
+          />
+        </Field>
+        <details class="howto">
+          <summary>
+            Jak zdobyć token? <Icon name="down" size={18} />
+          </summary>
+          <ol class="steps">
+            <li>
+              <span>
+                Otwórz{' '}
+                <a href={TOKEN_URL} target="_blank" rel="noopener">
+                  github.com → Fine-grained token
+                </a>{' '}
+                (zaloguj się).
+              </span>
+            </li>
+            <li>
+              <span>
+                Nazwa: <strong>Money Home</strong>, Expiration: najdłuższy możliwy termin.
+              </span>
+            </li>
+            <li>
+              <span>
+                Repository access: <strong>Only select repositories</strong> → <strong>{parsedRepo?.repo ?? 'money-home-dane'}</strong>.
+              </span>
+            </li>
+            <li>
+              <span>
+                Permissions → Repository → <strong>Contents: Read and write</strong>. Generate token i skopiuj go tutaj.
+              </span>
+            </li>
+          </ol>
+        </details>
+        {error && (
+          <div class="note-card warn" role="alert">
+            <Icon name="alert" size={18} />
+            <span>{error}</span>
+          </div>
+        )}
+        <button class="btn primary block" type="submit" disabled={busy || !token.trim()}>
+          <Icon name={busy ? 'sync' : 'link'} size={20} /> {busy ? 'Łączę…' : 'Połącz'}
+        </button>
+      </form>
+    </Sheet>
+  );
+}
+
+/** Second phone: scan the QR code (or paste the code) from the first one. */
 function Join() {
-  const h = useStore((s) => s.household);
-  const me = useStore((s) => s.prefs.me);
   const [code, setCode] = useState('');
-  const [who, setWho] = useState(me ?? h.people[0]?.id ?? '');
-  const ok = /^MH1\.[A-Za-z0-9_-]{20,}$/.test(code.trim());
+  const [scan, setScan] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const invite = decodeInvite(code);
+
+  const join = async (text: string) => {
+    const cfg = decodeInvite(text);
+    if (!cfg) {
+      setError('To nie wygląda na kod Money Home (zaczyna się od MH1.)');
+      return;
+    }
+    if (__PROTOTYPE__) {
+      toast('Prototyp: w aplikacji telefon połączy się z Waszym budżetem');
+      closeSheet();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await connectSync(cfg);
+      finishWelcome();
+      toast(`Połączono · ${r.entries} wpisów`);
+      openWhoAmI();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Sheet title="Dołącz do domu" onClose={closeSheet}>
-      <p class="soft">Na telefonie, który już ma budżet: Więcej → Połącz drugi telefon. Potem zeskanuj kod albo wklej go tutaj.</p>
-      <button class="btn secondary block" type="button" disabled={__PROTOTYPE__} onClick={() => toast('Skaner otworzy aparat')}>
-        <Icon name="scan" size={20} /> Skanuj kod QR{__PROTOTYPE__ ? ' (w aplikacji)' : ''}
-      </button>
-      <Field label="Albo wklej kod" id="join-code" error={code && !ok ? 'To nie wygląda na kod Money Home (zaczyna się od MH1.)' : null}>
+      <p class="soft">Na telefonie, który już ma budżet: Więcej → Połącz drugi telefon. Potem zeskanuj pokazany kod.</p>
+      {scan ? (
+        <Scanner
+          onCode={(text) => {
+            setScan(false);
+            setCode(text);
+            void join(text);
+          }}
+        />
+      ) : (
+        <button class="btn primary block" type="button" disabled={__PROTOTYPE__ || busy} onClick={() => setScan(true)}>
+          <Icon name="scan" size={20} /> Skanuj kod QR{__PROTOTYPE__ ? ' (w aplikacji)' : ''}
+        </button>
+      )}
+      <Field label="Albo wklej kod" id="join-code">
         <textarea id="join-code" class="input" placeholder="MH1.…" value={code} onInput={(e) => setCode((e.target as HTMLTextAreaElement).value)} />
       </Field>
-      <Field label="Kim jesteś na tym telefonie?">
-        <Segmented label="Kim jesteś" value={who} onChange={setWho} options={h.people.map((p) => ({ value: p.id, label: p.name }))} />
-      </Field>
-      <button
-        class="btn primary block"
-        type="button"
-        disabled={!ok}
-        onClick={() => {
-          setMe(who);
-          toast(__PROTOTYPE__ ? 'Prototyp: w aplikacji telefon połączy się z Waszym budżetem' : 'Połączono');
-          closeSheet();
-        }}
-      >
-        Dołącz
+      {error && (
+        <div class="note-card warn" role="alert">
+          <Icon name="alert" size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+      <button class="btn secondary block" type="button" disabled={!invite || busy} onClick={() => void join(code)}>
+        {busy ? 'Łączę…' : 'Dołącz'}
       </button>
     </Sheet>
   );
+}
+
+/** After joining: which person is this phone? */
+function WhoAmI() {
+  const h = useStore((s) => s.household);
+  return (
+    <Sheet title="Kim jesteś?" onClose={closeSheet}>
+      <p class="soft">Ten telefon podpowie Twoje dochody i nadpłaty, a Twoje wpisy dostaną Twoją pieczątkę.</p>
+      <div class="card tight">
+        {h.people.map((p) => (
+          <button
+            key={p.id}
+            class="choice"
+            type="button"
+            onClick={() => {
+              setMe(p.id);
+              closeSheet();
+              toast(`Cześć, ${p.name}!`);
+            }}
+          >
+            <Hanko person={p} size="lg" />
+            <span>
+              <strong>{p.name}</strong>
+            </span>
+            <Icon name="right" size={18} class="muted" />
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+/** Read a budget file (.json): a backup of the shared file or a converted spreadsheet. */
+export async function importFromFile(file: File): Promise<void> {
+  const text = await file.text();
+  let data: Household;
+  try {
+    const raw = JSON.parse(text) as { schema?: number; year?: number };
+    data = raw.schema === 1 ? parseHousehold(text) : householdFromSeed(raw as unknown as SeedFile);
+  } catch (e) {
+    toast(`Nie mogę wczytać pliku: ${(e as Error).message}`);
+    return;
+  }
+  const local = getState().household;
+  const pristine = liveEntries(local).length === 0;
+  importHousehold(pristine ? data : mergeHouseholds(local, data));
+  finishWelcome();
+  toast(`Wczytano ${data.entries.filter((e) => !e.deleted).length} wpisów`);
+  if (!data.people.some((p) => p.id === getState().prefs.me)) openWhoAmI();
 }
 
 // ------------------------------------------------------------------ mortgage params
@@ -516,6 +714,9 @@ function MortgageEditor() {
     balanceOn: !!m.balance,
     balance: m.balance ? amountInputValue(m.balance.amount) : '',
     balanceMonth: m.balance?.month ?? addMonths(currentMonth(), -1),
+    remaining: m.balance?.remaining ? String(m.balance.remaining) : '',
+    fixedOn: !!m.rateFixedUntil,
+    fixedUntil: m.rateFixedUntil ?? addMonths(currentMonth(), 48),
     confirmed: m.confirmed,
   });
   const set = (patch: Partial<typeof f>) => setF({ ...f, ...patch });
@@ -527,6 +728,7 @@ function MortgageEditor() {
     rate: rate >= 0 && rate < 30 ? null : 'Wpisz oprocentowanie, np. 6,5',
     term: Number.isInteger(term) && term > 0 && term <= 600 ? null : 'Liczba rat: 1–600',
     balance: !f.balanceOn || (parseAmount(f.balance) ?? 0) > 0 ? null : 'Wpisz saldo z aplikacji banku',
+    remaining: !f.balanceOn || !f.remaining.trim() || (Number.isInteger(Number(f.remaining)) && Number(f.remaining) > 0 && Number(f.remaining) <= 600) ? null : 'Liczba rat: 1–600',
   };
   const valid = Object.values(errors).every((e) => !e);
   const [tried, setTried] = useState(false);
@@ -544,7 +746,8 @@ function MortgageEditor() {
       kind: f.kind,
       overpayEffect: f.effect,
       contributions: h.people.map((p, i) => ({ person: p.id, amount: parseAmount(f.contributions[i]) ?? 0 })),
-      balance: f.balanceOn ? { amount: parseAmount(f.balance)!, month: f.balanceMonth } : null,
+      balance: f.balanceOn ? { amount: parseAmount(f.balance)!, month: f.balanceMonth, ...(f.remaining.trim() ? { remaining: Number(f.remaining) } : {}) } : null,
+      rateFixedUntil: f.fixedOn ? f.fixedUntil : null,
       confirmed: f.confirmed,
     };
     updateMortgage(patch);
@@ -565,12 +768,22 @@ function MortgageEditor() {
           </Field>
         </div>
         <div class="row-inline">
-          <Field label="Oprocentowanie (%)" id="m-rate" error={tried ? errors.rate : null} hint="Marża + WIBOR, albo stała stopa">
+          <Field label="Oprocentowanie (%)" id="m-rate" error={tried ? errors.rate : null} hint="Stała stopa albo marża + WIBOR">
             <input id="m-rate" class="input num" inputMode="decimal" value={f.rate} onInput={(e) => set({ rate: (e.target as HTMLInputElement).value })} />
           </Field>
           <Field label="Liczba rat" id="m-term" error={tried ? errors.term : null} hint={term > 0 ? `${Math.floor(term / 12)} lat${term % 12 ? ` i ${term % 12} mies.` : ''}` : undefined}>
             <input id="m-term" class="input num" inputMode="numeric" value={f.term} onInput={(e) => set({ term: (e.target as HTMLInputElement).value })} />
           </Field>
+        </div>
+        <div class="field">
+          <div class="toggle-row">
+            <div>
+              <div style={{ fontWeight: 600 }}>Stałe oprocentowanie</div>
+              <div class="hint">Do kiedy obowiązuje stała stopa z umowy.</div>
+            </div>
+            <Switch checked={f.fixedOn} onChange={(fixedOn) => set({ fixedOn })} label="Stałe oprocentowanie" />
+          </div>
+          {f.fixedOn && <MonthNav month={f.fixedUntil} onChange={(fixedUntil) => set({ fixedUntil })} sub="ostatni miesiąc stałej stopy" />}
         </div>
         <Field label="Pierwsza rata">
           <MonthNav month={f.first} onChange={(first) => set({ first })} />
@@ -603,15 +816,28 @@ function MortgageEditor() {
         <div class="field">
           <div class="toggle-row">
             <div>
-              <div style={{ fontWeight: 600 }}>Saldo z banku</div>
-              <div class="hint">Kapitał do spłaty po racie z wybranego miesiąca. Nadpisuje wyliczenia.</div>
+              <div style={{ fontWeight: 600 }}>Stan z aplikacji banku</div>
+              <div class="hint">Kapitał do spłaty i liczba pozostałych rat po racie z wybranego miesiąca. Nadpisują wyliczenia.</div>
             </div>
             <Switch checked={f.balanceOn} onChange={(balanceOn) => set({ balanceOn })} label="Saldo z banku" />
           </div>
           {f.balanceOn && (
             <>
-              <input class="input num" inputMode="decimal" placeholder="np. 480 000" value={f.balance} aria-label="Saldo kapitału" aria-invalid={tried && !!errors.balance} onInput={(e) => set({ balance: (e.target as HTMLInputElement).value })} />
-              {tried && errors.balance && <span class="error">{errors.balance}</span>}
+              <div class="row-inline">
+                <div class="field">
+                  <label for="m-balance" class="hint">
+                    Do spłaty (zł)
+                  </label>
+                  <input id="m-balance" class="input num" inputMode="decimal" placeholder="np. 480 000" value={f.balance} aria-invalid={tried && !!errors.balance} onInput={(e) => set({ balance: (e.target as HTMLInputElement).value })} />
+                </div>
+                <div class="field">
+                  <label for="m-remaining" class="hint">
+                    Pozostało rat
+                  </label>
+                  <input id="m-remaining" class="input num" inputMode="numeric" placeholder="np. 300" value={f.remaining} aria-invalid={tried && !!errors.remaining} onInput={(e) => set({ remaining: (e.target as HTMLInputElement).value })} />
+                </div>
+              </div>
+              {tried && (errors.balance || errors.remaining) && <span class="error">{errors.balance ?? errors.remaining}</span>}
               <MonthNav month={f.balanceMonth} onChange={(balanceMonth) => set({ balanceMonth })} sub="stan po racie z tego miesiąca" />
             </>
           )}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Money Home</string>
+    <string name="title_activity_main">Money Home</string>
+    <string name="package_name">com.n3rson.moneyhome</string>
+    <string name="custom_url_scheme">com.n3rson.moneyhome</string>
+</resources>

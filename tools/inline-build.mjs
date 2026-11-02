@@ -18,7 +18,7 @@ const head = html.match(/<head>([\s\S]*?)<\/head>/)[1];
 const body = html.match(/<body>([\s\S]*?)<\/body>/)[1];
 const keepHead = head
   .split('\n')
-  .filter((l) => !/<meta charset|<meta name="viewport"/.test(l))
+  .filter((l) => !/<meta charset|<meta name="viewport"|rel="manifest"|rel="icon"|rel="apple-touch-icon"|apple-mobile-web-app|mobile-web-app-capable/.test(l))
   .join('\n');
 // title first: only the first 8KB are scanned for it
 const title = keepHead.match(/<title>[\s\S]*?<\/title>/)[0];

@@ -59,8 +59,13 @@ export interface MortgageParams {
   firstPayment: MonthKey;
   kind: 'annuity' | 'decreasing';
   overpayEffect: 'shorten' | 'lower';
-  /** Optional balance from the bank app, after the installment of `month`. */
-  balance?: { amount: number; month: MonthKey } | null;
+  /**
+   * Optional figures from the bank app, after the installment of `month`:
+   * remaining principal and (optionally) how many installments are left.
+   */
+  balance?: { amount: number; month: MonthKey; remaining?: number } | null;
+  /** Last month of a fixed-rate period, e.g. '2030-12'. */
+  rateFixedUntil?: MonthKey | null;
   /** False until the parameters were checked against the loan agreement. */
   confirmed: boolean;
   updatedAt: number;

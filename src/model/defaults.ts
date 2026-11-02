@@ -50,6 +50,10 @@ export function defaultMortgage(now: number, year: number): MortgageParams {
   };
 }
 
+/**
+ * A fresh phone. All timestamps are 0, so when it connects to an existing
+ * shared file, everything from the file wins over these placeholders.
+ */
 export function emptyHousehold(now = Date.now()): Household {
   const year = new Date(now).getFullYear();
   return {
@@ -60,8 +64,8 @@ export function emptyHousehold(now = Date.now()): Household {
     ],
     billCategories: DEFAULT_BILL_CATEGORIES,
     entries: [],
-    mortgage: defaultMortgage(now, year),
-    meta: { createdAt: now, updatedAt: now, peopleUpdatedAt: now, categoriesUpdatedAt: now },
+    mortgage: defaultMortgage(0, year),
+    meta: { createdAt: 0, updatedAt: 0, peopleUpdatedAt: 0, categoriesUpdatedAt: 0 },
   };
 }
 

@@ -77,6 +77,7 @@ export function simulate(loan: LoanShape, opts: SimOptions = {}): Schedule {
     const anchor = loan.balance;
     if (anchor && anchor.month === month && anchor.amount > 0) {
       balance = anchor.amount;
+      if (anchor.remaining && anchor.remaining > 0) remaining = anchor.remaining;
       recalc = true;
     }
     if (recalc && balance > 0.5) {

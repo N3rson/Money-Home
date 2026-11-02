@@ -148,12 +148,12 @@ export function Mortgage() {
         </div>
         <div class="facts">
           <Fact label="Kwota kredytu" value={formatPLN(m.principal, { decimals: 'auto' })} />
-          <Fact label="Oprocentowanie" value={`${String(m.annualRate).replace('.', ',')}%`} foot={m.confirmed ? 'z umowy' : 'szacunek'} />
+          <Fact label="Oprocentowanie" value={`${String(m.annualRate).replace('.', ',')}%`} foot={m.rateFixedUntil ? `stałe do ${monthShortYear(m.rateFixedUntil)}` : m.confirmed ? 'z umowy' : 'szacunek'} />
           <Fact label="Liczba rat" value={`${m.termMonths}`} foot={durationLabel(m.termMonths)} />
           <Fact label="Pierwsza rata" value={monthShortYear(m.firstPayment)} />
           <Fact label="Raty" value={m.kind === 'annuity' ? 'Równe' : 'Malejące'} />
           <Fact label="Nadpłata" value={m.overpayEffect === 'shorten' ? 'Skraca okres' : 'Obniża ratę'} />
-          {m.balance && <Fact label="Saldo z banku" value={formatPLN(m.balance.amount, { decimals: false })} foot={`po racie: ${monthShortYear(m.balance.month)}`} />}
+          {m.balance && <Fact label="Saldo z banku" value={formatPLN(m.balance.amount)} foot={`po racie: ${monthShortYear(m.balance.month)}${m.balance.remaining ? ` · ${m.balance.remaining} rat` : ''}`} />}
         </div>
       </section>
     </div>
@@ -297,7 +297,11 @@ function Simulator({ m, recorded }: { m: MortgageParams; recorded: Map<string, n
             ))}
           </tbody>
         </table>
-        <p class="hint">Wyliczenia zakładają stałe oprocentowanie. Przy zmiennym (WIBOR) traktuj je jako dobry kierunek, nie co do złotówki.</p>
+        <p class="hint">
+          {m.rateFixedUntil
+            ? `Wyliczenia zakładają ${String(m.annualRate).replace('.', ',')}% do końca spłaty. Stopa jest stała do ${monthShortYear(m.rateFixedUntil)}; potem bank ustali nową, więc dalsze lata to dobry kierunek, nie wynik co do złotówki.`
+            : 'Wyliczenia zakładają niezmienne oprocentowanie. Przy zmiennym (WIBOR) traktuj je jako dobry kierunek, nie wynik co do złotówki.'}
+        </p>
       </div>
     </section>
   );
