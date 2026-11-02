@@ -3,8 +3,9 @@
 Domowy budżet dla dwojga, zbudowany na bazie arkusza „DOMOWY BUDŻET”: dochody, opłaty stałe, wydatki,
 nadpłaty i kredyt hipoteczny, wspólne dla dwóch telefonów (Android + iPhone).
 
-> **Status:** prototyp do akceptacji. Logika, obliczenia i wszystkie ekrany działają; synchronizacja
-> między telefonami jest na razie symulowana.
+- **Android:** podpisany plik APK z *Releases* prywatnego repo `money-home-dane` (buduje go tamtejszy workflow).
+- **iPhone:** [n3rson.github.io/Money-Home](https://n3rson.github.io/Money-Home/) w Safari → Udostępnij → Do ekranu początkowego.
+- **Wspólne dane:** plik `budzet.json` w prywatnym repo `money-home-dane`; telefony łączą się tokenem / kodem QR.
 
 ## Co jest w środku
 
@@ -43,10 +44,15 @@ SEED_FILE=~/budget.json npm run build:prototype   # jeden plik HTML: dist/protot
 Stos: Preact + TypeScript + Vite, bez zależności w runtime poza `qrcode-generator`. Czcionki (Albert Sans,
 Noto Serif Display) są dołączone do paczki, więc aplikacja działa offline.
 
-## Plan (po akceptacji prototypu)
+## Jak to działa
 
-1. Synchronizacja: plik `budzet.json` w prywatnym repo GitHub, zapis offline-first, scalanie zmian wpis po wpisie,
-   historia zmian w commitach.
-2. Android: APK (Capacitor) budowany przez GitHub Actions i publikowany w Releases.
-3. iPhone: ta sama aplikacja jako PWA (Safari → Do ekranu początkowego), z działaniem offline.
-4. Eksport/import Excela w układzie arkusza.
+- **Synchronizacja** (`src/sync/`): plik JSON czytany i zapisywany przez GitHub Contents API z `sha` odczytanej wersji.
+  Zmiany zapisują się najpierw w telefonie, a potem łączą wpis po wpisie (nowsza edycja wygrywa, usunięcia zostają jako
+  „nagrobki”); konflikt zapisu = ponowne połączenie i zapis. Działa offline, w tle co 45 s i po każdej zmianie.
+- **Parowanie:** kod `MH1.…` (QR albo tekst) zawiera repozytorium i token; drugi telefon skanuje go aparatem (jsQR).
+- **iPhone (PWA):** manifest + service worker generowany przy budowaniu (offline), wdrażany workflowem *Strona aplikacji*.
+- **Android:** projekt Capacitor w `android/`; workflow *Android (kompilacja)* sprawdza każdą zmianę, a podpisany APK
+  buduje repo z danymi (klucz zaszyfrowany hasłem z sekretu `ANDROID_KEY_PASSWORD`).
+
+Narzędzia: `tools/xlsx_to_json.py` (arkusz → JSON), `tools/make_data_file.py` (plik `budzet.json` z danymi kredytu),
+`tools/make-icons.cjs` (ikony i ekran startowy).
