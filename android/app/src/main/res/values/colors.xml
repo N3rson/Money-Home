@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- window background behind the web app and the system bars -->
+    <color name="paper">#EDEBE5</color>
+    <!-- circle behind the launch icon (Android 12+) -->
+    <color name="splash_icon_bg">#EDEBE5</color>
+</resources>
