@@ -1,0 +1,31 @@
+# Sprawdza, czy projekt Androida się kompiluje (bez podpisu, bez sekretów).
+# Podpisany APK do instalacji buduje prywatne repo money-home-dane.
+name: Android (kompilacja)
+
+on:
+  push:
+    branches: [main, claude/shared-finance-calculator-app-gqltv8]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Kompilacja (debug)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
