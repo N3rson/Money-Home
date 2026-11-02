@@ -92,7 +92,7 @@ function parseNumber(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Value for an <input>: "120,5" -> "120,50" */
+/** Value for an <input>, e.g. 12050 grosze -> "120,50" */
 export function amountInputValue(grosze: number): string {
   const { int, dec } = moneyParts(Math.abs(grosze));
   return `${int.split(GROUP).join(' ')},${dec}`.replace(/,00$/, '');
