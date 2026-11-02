@@ -1848,3 +1848,98 @@ details.howto .steps {
 .own-insets .app {
   padding-top: calc(8px + env(safe-area-inset-top, 0px));
 }
+
+/* ------------------------------------------------------------------ paid bills */
+.bill-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0 12px 0 0;
+  gap: 4px;
+}
+.row-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 6px 11px 16px;
+  min-height: 58px;
+  text-align: left;
+  width: 100%;
+  border-radius: 12px;
+}
+.row-main:hover {
+  background: var(--surface-2);
+}
+.paid-check {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s, transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.paid-check:hover {
+  color: var(--ink-3);
+}
+/* ticked: a small moss-green seal, slightly tilted like a stamp */
+.paid-check[aria-pressed='true'] {
+  background: var(--moss);
+  color: #fff;
+  box-shadow: none;
+  transform: rotate(-8deg);
+}
+.bill-row.is-paid .title,
+.bill-row.is-paid .amount {
+  color: var(--ink-2);
+}
+.paid-progress {
+  display: grid;
+  gap: 6px;
+  padding: 0 4px 2px;
+}
+.paid-track {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.paid-track span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--moss);
+  transition: width 0.3s ease;
+}
+.paid-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+/* ------------------------------------------------------------------ sheet: opaque save bar */
+.sheet:focus {
+  outline: none;
+}
+.sheet-foot {
+  background: var(--paper);
+  padding-block: 10px 4px;
+  z-index: 1;
+}
+.sheet-foot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -16px;
+  height: 16px;
+  background: linear-gradient(to bottom, transparent, var(--paper));
+  pointer-events: none;
+}
+.btn.danger {
+  background: color-mix(in srgb, var(--bad) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+}

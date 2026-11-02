@@ -108,3 +108,30 @@ describe.skipIf(!hasSeed)('spreadsheet parity', () => {
     expect(h!.mortgage.annualRate).toBeLessThan(15);
   });
 });
+
+describe('paid bills', () => {
+  const bill = (month: string, amount: number, paid?: boolean): Entry => ({
+    id: `${month}-${amount}`,
+    type: 'bill',
+    category: 'rent',
+    month,
+    amount,
+    paid,
+    createdAt: 0,
+    createdBy: 't',
+    updatedAt: 0,
+    updatedBy: 't',
+  });
+  it('past months count as paid unless marked otherwise', async () => {
+    const { isPaid } = await import('../src/model/calc');
+    expect(isPaid(bill('2026-10', 100), '2026-11')).toBe(true);
+    expect(isPaid(bill('2026-10', 100, false), '2026-11')).toBe(false);
+    expect(isPaid(bill('2026-11', 100), '2026-11')).toBe(false);
+    expect(isPaid(bill('2026-11', 100, true), '2026-11')).toBe(true);
+  });
+  it('progress counts bills and paid amounts', async () => {
+    const { billProgress } = await import('../src/model/calc');
+    const p = billProgress([bill('2026-11', 300000, true), bill('2026-11', 50000), bill('2026-11', 25000, true)], '2026-11');
+    expect(p).toEqual({ count: 3, paid: 2, total: 375000, paidAmount: 325000 });
+  });
+});

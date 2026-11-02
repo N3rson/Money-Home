@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import qrcode from 'qrcode-generator';
 import type { Entry, EntryType, Household, MonthKey, MortgageParams, Person, SeedFile } from '../model/types';
 import { INCOME_CATEGORIES, TYPE_LABEL, householdFromSeed } from '../model/defaults';
-import { liveEntries, billsToCopy } from '../model/calc';
+import { liveEntries, billsToCopy, isPaid } from '../model/calc';
 import {
   addBillCategory,
   addEntries,
@@ -134,6 +134,7 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
   const [tried, setTried] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [newCat, setNewCat] = useState<string | null>(null);
+  const [paid, setPaidLocal] = useState(existing?.type === 'bill' ? isPaid(existing) : false);
 
   const parsed = parseAmount(amount);
   const amountError = parsed === null ? 'Wpisz kwotę, np. 120,50' : parsed < 0 ? 'Kwota nie może być ujemna' : parsed === 0 && !(type === 'expense' && note.trim()) ? 'Kwota musi być większa od zera' : null;
@@ -152,7 +153,10 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
     const base: EntryDraft = { type, month, amount: parsed ?? 0 };
     if (type === 'income') Object.assign(base, { person, category: incomeCat });
     if (type === 'overpayment') Object.assign(base, { person });
-    if (type === 'bill') Object.assign(base, { category: billCat });
+    if (type === 'bill') {
+      const paidAt = paid ? (existing?.paid && existing.paidAt ? existing.paidAt : Date.now()) : undefined;
+      Object.assign(base, { category: billCat, paid, paidAt, paidBy: paid ? existing?.paidBy ?? me ?? undefined : undefined });
+    }
     if (type === 'expense') Object.assign(base, { title: title.trim(), person: expensePayer || undefined });
     if (note.trim()) base.note = note.trim();
     return base;
@@ -164,7 +168,16 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
     if (!valid) return;
     const d = draft();
     if (existing) {
-      const patch: Partial<Entry> = { ...d, note: d.note ?? undefined, title: d.title ?? undefined, person: d.person ?? undefined, category: d.category ?? undefined };
+      const patch: Partial<Entry> = {
+        paid: undefined,
+        paidAt: undefined,
+        paidBy: undefined,
+        ...d,
+        note: d.note ?? undefined,
+        title: d.title ?? undefined,
+        person: d.person ?? undefined,
+        category: d.category ?? undefined,
+      };
       updateEntry(existing.id, patch);
       toast('Zapisano zmiany');
     } else if (type === 'expense' && installments && count > 1) {
@@ -209,7 +222,6 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
           <div class="amount-field">
             <input
               id="amount"
-              data-autofocus
               inputMode="decimal"
               autoComplete="off"
               placeholder="0,00"
@@ -279,6 +291,16 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
           </Field>
         )}
 
+        {type === 'bill' && (
+          <div class="toggle-row">
+            <div>
+              <div style={{ fontWeight: 600 }}>Opłacone</div>
+              <div class="hint">Odhaczysz to też na liście, kółkiem przy kwocie.</div>
+            </div>
+            <Switch checked={paid} onChange={setPaidLocal} label="Opłacone" />
+          </div>
+        )}
+
         {type === 'expense' && (
           <>
             <Field label="Co kupiliście" id="title" error={tried ? titleError : null}>
@@ -325,6 +347,7 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
           <button class="btn primary block" type="submit">
             <Icon name="check" size={20} /> {existing ? 'Zapisz zmiany' : 'Dodaj'}
           </button>
+        </div>
           {existing && !confirm && (
             <button class="btn danger block" type="button" onClick={() => setConfirm(true)}>
               <Icon name="trash" size={19} /> Usuń wpis
@@ -349,7 +372,6 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
               )}
             </div>
           )}
-        </div>
       </form>
     </Sheet>
   );
@@ -528,7 +550,6 @@ function Connect() {
           <input
             id="c-token"
             class="input"
-            data-autofocus
             type="password"
             autoComplete="off"
             autoCapitalize="off"

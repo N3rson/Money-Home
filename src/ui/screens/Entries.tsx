@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'preact/hooks';
 import type { Entry, EntryType, Household, MonthKey } from '../../model/types';
 import { INCOME_CATEGORIES, TYPE_LABEL_PLURAL } from '../../model/defaults';
-import { billsToCopy, liveEntries, summarizeMonth, summarizeYear, lensView, yearsWithData } from '../../model/calc';
-import { setMonth, useStore } from '../../model/store';
+import { billProgress, billsToCopy, isPaid, liveEntries, summarizeMonth, summarizeYear, lensView, yearsWithData } from '../../model/calc';
+import { setMonth, setPaid, useStore } from '../../model/store';
 import { formatPLN } from '../../lib/money';
 import { MONTHS_LOCATIVE, MONTHS_SHORT, monthKey, monthName, parseMonth, addMonths } from '../../lib/months';
 import { Chips, Empty, Hanko, Money, MonthNav, Segmented } from '../components';
@@ -110,6 +110,7 @@ function Group({ type, items, h, month }: { type: EntryType; items: Entry[]; h: 
         <span class="eyebrow">{TYPE_LABEL_PLURAL[type]}</span>
         <Money value={total} />
       </div>
+      {type === 'bill' && <PaidProgress items={items} />}
       <div class="card tight">
         {items.map((e) => (
           <EntryRow key={e.id} e={e} h={h} />
@@ -128,7 +129,64 @@ function Group({ type, items, h, month }: { type: EntryType; items: Entry[]; h: 
   );
 }
 
+/** How much of this month's bills is already paid: a thin bar and one line. */
+function PaidProgress({ items }: { items: Entry[] }) {
+  const p = billProgress(items);
+  if (!p.count) return null;
+  const share = p.total ? p.paidAmount / p.total : 0;
+  const pct = Math.round(share * 100);
+  const done = p.paid === p.count;
+  return (
+    <div class="paid-progress">
+      <div class="paid-track" role="progressbar" aria-label="Opłacone" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+        <span style={{ width: `${share * 100}%` }} />
+      </div>
+      <div class="paid-caption">
+        <span>{done ? 'Wszystko opłacone' : `Opłacone ${pct}% · ${p.paid} z ${p.count}`}</span>
+        {!done && <span class="num">zostało {formatPLN(p.total - p.paidAmount)}</span>}
+      </div>
+    </div>
+  );
+}
+
+function shortDate(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()].toLowerCase()}`;
+}
+
+function BillRow({ e, h }: { e: Entry; h: Household }) {
+  const name = h.billCategories.find((c) => c.id === e.category)?.name ?? 'Opłata';
+  const paid = isPaid(e);
+  const status = paid ? (e.paidAt ? `opłacone ${shortDate(e.paidAt)}` : 'opłacone') : 'do zapłaty';
+  return (
+    <div class={`row bill-row ${paid ? 'is-paid' : ''}`}>
+      <button class="row-main" type="button" onClick={() => openEntry({ id: e.id })}>
+        <span class="glyph">
+          <Icon name={billIcon(e.category)} size={17} />
+        </span>
+        <span class="main">
+          <span class="title">{name}</span>
+          <span class="sub">{[status, 'po połowie', e.note].filter(Boolean).join(' · ')}</span>
+        </span>
+        <span class="amount">
+          <Money value={e.amount} />
+        </span>
+      </button>
+      <button
+        class="paid-check"
+        type="button"
+        aria-pressed={paid}
+        aria-label={`${name}: ${paid ? 'opłacone, dotknij, aby cofnąć' : 'oznacz jako opłacone'}`}
+        onClick={() => setPaid(e.id, !paid)}
+      >
+        <Icon name="check" size={18} />
+      </button>
+    </div>
+  );
+}
+
 function EntryRow({ e, h }: { e: Entry; h: Household }) {
+  if (e.type === 'bill') return <BillRow e={e} h={h} />;
   const person = h.people.find((p) => p.id === e.person);
   let title = '';
   const sub: string[] = [];
@@ -138,11 +196,6 @@ function EntryRow({ e, h }: { e: Entry; h: Household }) {
       title = INCOME_CATEGORIES.find((c) => c.id === e.category)?.name ?? 'Dochód';
       sub.push(person?.name ?? '');
       lead = <Hanko person={person} />;
-      break;
-    case 'bill':
-      title = h.billCategories.find((c) => c.id === e.category)?.name ?? 'Opłata';
-      sub.push('wspólna, po połowie');
-      lead = <span class="glyph"><Icon name={billIcon(e.category)} size={17} /></span>;
       break;
     case 'overpayment':
       title = 'Nadpłata kredytu';

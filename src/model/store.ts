@@ -213,6 +213,11 @@ export function updateEntry(id: string, patch: Partial<Entry>) {
   });
 }
 
+/** Tick a bill off as paid (or undo it). */
+export function setPaid(id: string, paid: boolean) {
+  updateEntry(id, paid ? { paid: true, paidAt: Date.now(), paidBy: meId() } : { paid: false, paidAt: undefined, paidBy: undefined });
+}
+
 function setDeleted(ids: Set<string>, deleted: boolean) {
   const now = Date.now();
   commit(

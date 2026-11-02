@@ -35,6 +35,13 @@ export interface Entry {
   title?: string;
   note?: string;
   series?: Series;
+  /**
+   * Bills: ticked off as paid. Missing = paid for months before the current
+   * one (history is settled) and unpaid from the current month on.
+   */
+  paid?: boolean;
+  paidAt?: number;
+  paidBy?: PersonId;
   createdAt: number;
   createdBy: string;
   updatedAt: number;

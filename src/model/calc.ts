@@ -1,5 +1,5 @@
 import type { Entry, Household, MonthKey, PersonId } from './types';
-import { monthsOfYear, parseMonth } from '../lib/months';
+import { currentMonth, monthsOfYear, parseMonth } from '../lib/months';
 
 /** 'all' = the household, otherwise one person. */
 export type Lens = 'all' | PersonId;
@@ -220,6 +220,33 @@ export function lastInstallment(h: Household, upTo: MonthKey): { month: MonthKey
     }
   }
   return best;
+}
+
+/** Paid status of a bill; past months count as paid unless marked otherwise. */
+export function isPaid(e: Entry, today: MonthKey = currentMonth()): boolean {
+  if (e.paid !== undefined) return e.paid;
+  return e.month < today;
+}
+
+export interface BillProgress {
+  count: number;
+  paid: number;
+  total: number;
+  paidAmount: number;
+}
+
+export function billProgress(bills: Entry[], today: MonthKey = currentMonth()): BillProgress {
+  const p: BillProgress = { count: 0, paid: 0, total: 0, paidAmount: 0 };
+  for (const e of bills) {
+    if (e.type !== 'bill' || e.deleted) continue;
+    p.count++;
+    p.total += e.amount;
+    if (isPaid(e, today)) {
+      p.paid++;
+      p.paidAmount += e.amount;
+    }
+  }
+  return p;
 }
 
 /** Bills of the latest month before `month` that had any, to copy forward. */

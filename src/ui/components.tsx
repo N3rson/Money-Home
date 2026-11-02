@@ -147,8 +147,10 @@ export function Sheet({ title, onClose, children, label }: { title: ComponentChi
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    const first = ref.current?.querySelector<HTMLElement>('[data-autofocus]');
-    if (first) setTimeout(() => first.focus(), 60);
+    // focus moves into the sheet for screen readers, but onto the dialog itself:
+    // focusing an input would pop up the keyboard before the person chose a field
+    const target = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current;
+    if (target) setTimeout(() => target.focus({ preventScroll: true }), 60);
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
@@ -158,7 +160,7 @@ export function Sheet({ title, onClose, children, label }: { title: ComponentChi
   return (
     <>
       <div class="scrim" onClick={onClose} />
-      <div class="sheet" role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)} ref={ref}>
+      <div class="sheet" role="dialog" aria-modal="true" tabIndex={-1} aria-label={label ?? (typeof title === 'string' ? title : undefined)} ref={ref}>
         <div class="sheet-grip" />
         <div class="sheet-head">
           <h2>{title}</h2>
