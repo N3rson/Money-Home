@@ -140,7 +140,7 @@ function LensSummary({ h, month, lens, year }: { h: Household; month: MonthKey; 
             selected={month}
             onSelect={setMonth}
             tone={tone}
-            outLabel={lens === 'all' ? 'Wydano' : 'Opłaty i nadpłaty'}
+            outLabel={lens === 'all' ? 'Wydano' : 'Opłaty'}
           />
         </div>
       </section>

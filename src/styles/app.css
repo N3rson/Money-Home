@@ -743,12 +743,19 @@ p {
 .chart .hit {
   fill: transparent;
   cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
+/* tapping a month must not draw the system focus ring; the selection shows on the bars */
+.chart .hit:focus,
 .chart .hit:focus-visible {
   outline: none;
 }
-.chart .sel-band {
-  fill: var(--surface-3);
+.chart .bars {
+  transition: opacity 0.22s ease;
+}
+.chart .sel-dot {
+  fill: var(--ink);
 }
 .legend {
   display: flex;
@@ -785,6 +792,34 @@ p {
 .readout strong {
   color: var(--ink);
   font-weight: 600;
+}
+.readout.fixed {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.readout .ro-month {
+  font-size: 14px;
+  line-height: 20px;
+}
+.readout .ro-values {
+  display: flex;
+  gap: 16px;
+  white-space: nowrap;
+  line-height: 20px;
+  overflow: hidden;
+}
+.readout .ro-values span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.readout .ro-values i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
 }
 .tooltip {
   position: absolute;

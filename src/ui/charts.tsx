@@ -61,7 +61,8 @@ export function MonthBars({
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<MonthKey | null>(null);
   const c = TONES[tone];
-  const pad = { l: 40, r: 4, t: 10, b: 24 };
+  // bottom band holds the month labels and a small dot under the selected one
+  const pad = { l: 40, r: 4, t: 10, b: 30 };
   const plotW = width - pad.l - pad.r;
   const plotH = height - pad.t - pad.b;
   const max = niceMax(Math.max(1, ...data.map((d) => Math.max(d.income, d.out))));
@@ -75,20 +76,19 @@ export function MonthBars({
 
   return (
     <div class="chart" ref={ref}>
-      <div class="readout" aria-live="polite">
-        {act ? (
-          <>
-            <span>
-              <strong>{MONTHS[parseMonth(act.month).month - 1]}</strong>
-            </span>
-            <span>
-              Dochód <strong class="num">{formatPLN(act.income, { decimals: false })}</strong>
-            </span>
-            <span>
-              {outLabel} <strong class="num">{formatPLN(act.out, { decimals: false })}</strong>
-            </span>
-          </>
-        ) : null}
+      {/* fixed two-line readout: the chart never moves when another month is picked */}
+      <div class="readout fixed" aria-live="polite">
+        <strong class="ro-month">{act ? MONTHS[parseMonth(act.month).month - 1] : '\u00a0'}</strong>
+        <div class="ro-values">
+          <span>
+            <i style={{ background: c.light }} />
+            Dochód <strong class="num">{act ? formatPLN(act.income, { decimals: false }) : '—'}</strong>
+          </span>
+          <span>
+            <i style={{ background: c.strong }} />
+            {outLabel} <strong class="num">{act ? formatPLN(act.out, { decimals: false }) : '—'}</strong>
+          </span>
+        </div>
       </div>
       <svg width={width} height={height} role="img" aria-label={`Dochód i ${outLabel.toLowerCase()} w kolejnych miesiącach`} onPointerLeave={() => setHover(null)}>
         {ticks.map((t) => (
@@ -102,14 +102,17 @@ export function MonthBars({
         {data.map((d, i) => {
           const cx = pad.l + band * i + band / 2;
           const isSel = d.month === selected;
+          const isActive = d.month === active;
           return (
             <g key={d.month}>
-              {isSel && <rect class="sel-band" x={cx - band / 2 + 1} y={pad.t - 6} width={band - 2} height={plotH + 6 + 20} rx={8} />}
-              <path d={barPath(cx - wide / 2, y(d.income), wide, pad.t + plotH - y(d.income))} fill={c.light} />
-              <path d={barPath(cx - narrow / 2, y(d.out), narrow, pad.t + plotH - y(d.out), 3)} fill={c.strong} />
-              <text x={cx} y={height - 6} text-anchor="middle" class={isSel ? 'tick-strong' : undefined}>
+              <g class="bars" opacity={isActive ? 1 : 0.42}>
+                <path d={barPath(cx - wide / 2, y(d.income), wide, pad.t + plotH - y(d.income))} fill={c.light} />
+                <path d={barPath(cx - narrow / 2, y(d.out), narrow, pad.t + plotH - y(d.out), 3)} fill={c.strong} />
+              </g>
+              <text x={cx} y={height - 13} text-anchor="middle" class={isActive ? 'tick-strong' : undefined}>
                 {MONTHS_SHORT[parseMonth(d.month).month - 1]}
               </text>
+              {isSel && <circle class="sel-dot" cx={cx} cy={height - 4} r={2.5} />}
               <rect
                 class="hit"
                 x={cx - band / 2}
@@ -135,16 +138,6 @@ export function MonthBars({
           );
         })}
       </svg>
-      <div class="legend">
-        <span>
-          <i style={{ background: c.light }} />
-          Dochód
-        </span>
-        <span>
-          <i style={{ background: c.strong }} />
-          {outLabel}
-        </span>
-      </div>
     </div>
   );
 }
@@ -164,7 +157,8 @@ export function PairBars({
   height?: number;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
-  const pad = { l: 40, r: 4, t: 10, b: 24 };
+  const [hover, setHover] = useState<MonthKey | null>(null);
+  const pad = { l: 40, r: 4, t: 10, b: 30 };
   const plotW = width - pad.l - pad.r;
   const plotH = height - pad.t - pad.b;
   const max = niceMax(Math.max(1, ...data.map((d) => Math.max(d.a, d.b))));
@@ -172,9 +166,10 @@ export function PairBars({
   const band = plotW / data.length;
   const bw = Math.max(4, Math.min(11, (band * 0.72 - 2) / 2));
   const ticks = [0, max / 2, max];
+  const active = hover ?? selected;
   return (
     <div class="chart" ref={ref}>
-      <svg width={width} height={height} role="img" aria-label={`Dochody: ${names[0]} i ${names[1]} w kolejnych miesiącach`}>
+      <svg width={width} height={height} role="img" aria-label={`Dochody: ${names[0]} i ${names[1]} w kolejnych miesiącach`} onPointerLeave={() => setHover(null)}>
         {ticks.map((t) => (
           <g key={t}>
             <line class="grid" x1={pad.l} x2={width - pad.r} y1={Math.round(y(t)) + 0.5} y2={Math.round(y(t)) + 0.5} />
@@ -186,14 +181,17 @@ export function PairBars({
         {data.map((d, i) => {
           const cx = pad.l + band * i + band / 2;
           const isSel = d.month === selected;
+          const isActive = d.month === active;
           return (
             <g key={d.month}>
-              {isSel && <rect class="sel-band" x={cx - band / 2 + 1} y={pad.t - 6} width={band - 2} height={plotH + 26} rx={8} />}
-              <path d={barPath(cx - bw - 1, y(d.a), bw, pad.t + plotH - y(d.a), 3)} fill="var(--indigo)" />
-              <path d={barPath(cx + 1, y(d.b), bw, pad.t + plotH - y(d.b), 3)} fill="var(--clay)" />
-              <text x={cx} y={height - 6} text-anchor="middle" class={isSel ? 'tick-strong' : undefined}>
+              <g class="bars" opacity={isActive ? 1 : 0.42}>
+                <path d={barPath(cx - bw - 1, y(d.a), bw, pad.t + plotH - y(d.a), 3)} fill="var(--indigo)" />
+                <path d={barPath(cx + 1, y(d.b), bw, pad.t + plotH - y(d.b), 3)} fill="var(--clay)" />
+              </g>
+              <text x={cx} y={height - 13} text-anchor="middle" class={isActive ? 'tick-strong' : undefined}>
                 {MONTHS_SHORT[i]}
               </text>
+              {isSel && <circle class="sel-dot" cx={cx} cy={height - 4} r={2.5} />}
               <rect
                 class="hit"
                 x={cx - band / 2}
@@ -203,7 +201,11 @@ export function PairBars({
                 tabIndex={0}
                 role="button"
                 aria-label={`${MONTHS[i]}: ${names[0]} ${formatPLN(d.a)}, ${names[1]} ${formatPLN(d.b)}`}
+                aria-pressed={isSel}
                 onClick={() => onSelect(d.month)}
+                onPointerEnter={(e) => (e as PointerEvent).pointerType === 'mouse' && setHover(d.month)}
+                onFocus={() => setHover(d.month)}
+                onBlur={() => setHover(null)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
