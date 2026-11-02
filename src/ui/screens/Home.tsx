@@ -107,6 +107,20 @@ function LensSummary({ h, month, lens, year }: { h: Household; month: MonthKey; 
         )}
       </section>
 
+      {/* right under the month card: picking a month here updates the numbers above */}
+      <div class="card" aria-label={`Miesiące ${year}`}>
+        <MonthBars
+          data={ys.months.map((m) => {
+            const lv = lensView(m, lens);
+            return { month: m.month, income: lv.income, out: lv.out };
+          })}
+          selected={month}
+          onSelect={setMonth}
+          tone={tone}
+          outLabel={lens === 'all' ? 'Wydano' : 'Opłaty'}
+        />
+      </div>
+
       <section class="section" aria-label={`Rok ${year}`}>
         <div class="section-head">
           <h2 class="section-title">Rok {year}</h2>
@@ -130,18 +144,6 @@ function LensSummary({ h, month, lens, year }: { h: Household; month: MonthKey; 
             <span class={`value num ${ys.total.left < 0 ? 'neg' : ''}`}>{formatPLN(ys.total.left, { decimals: false, unit: false })}<span class="unit">zł</span></span>
             <span class="foot">śr. {formatPLN(ys.avgLeft, { decimals: false, unit: false })}/mies.</span>
           </div>
-        </div>
-        <div class="card">
-          <MonthBars
-            data={ys.months.map((m) => {
-              const lv = lensView(m, lens);
-              return { month: m.month, income: lv.income, out: lv.out };
-            })}
-            selected={month}
-            onSelect={setMonth}
-            tone={tone}
-            outLabel={lens === 'all' ? 'Wydano' : 'Opłaty'}
-          />
         </div>
       </section>
     </>
