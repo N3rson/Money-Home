@@ -34,7 +34,7 @@
   --warn-soft: #f3e7cf;
   /* type */
   --font-ui: 'Albert Sans', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-display: 'Shippori Mincho', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-display: 'Noto Serif Display', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
   /* shape */
   --radius: 18px;
   --radius-sm: 12px;
@@ -237,14 +237,14 @@ p {
 .brand-name {
   font-family: var(--font-display);
   font-size: 19px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.01em;
 }
 .screen-title {
   font-family: var(--font-display);
   font-size: 28px;
   line-height: 1.15;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.005em;
 }
 .screen-head {
@@ -318,7 +318,7 @@ p {
 .section-title {
   font-family: var(--font-display);
   font-size: 19px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .link-btn {
   color: var(--ink-2);
@@ -441,7 +441,7 @@ p {
 .month-nav .label strong {
   font-family: var(--font-display);
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .month-nav .label span {
   font-size: 12px;
@@ -963,6 +963,9 @@ button.row:hover {
   gap: 2px;
   min-width: 0;
 }
+.facts > .fact:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
 .fact .label {
   font-size: 12px;
   color: var(--ink-3);
@@ -1470,6 +1473,7 @@ textarea.input {
 .sheet-head h2 {
   font-family: var(--font-display);
   font-size: 22px;
+  font-weight: 500;
 }
 .sheet-body {
   overflow-y: auto;
@@ -1710,6 +1714,7 @@ button.settings-row:hover {
 .welcome-head h1 {
   font-family: var(--font-display);
   font-size: 32px;
+  font-weight: 500;
 }
 .choice {
   display: grid;

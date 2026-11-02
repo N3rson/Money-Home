@@ -41,7 +41,7 @@ SEED_FILE=~/budget.json npm run build:prototype   # jeden plik HTML: dist/protot
 ```
 
 Stos: Preact + TypeScript + Vite, bez zależności w runtime poza `qrcode-generator`. Czcionki (Albert Sans,
-Shippori Mincho) są dołączone do paczki, więc aplikacja działa offline.
+Noto Serif Display) są dołączone do paczki, więc aplikacja działa offline.
 
 ## Plan (po akceptacji prototypu)
 

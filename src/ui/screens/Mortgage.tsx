@@ -188,6 +188,8 @@ function Simulator({ m, recorded }: { m: MortgageParams; recorded: Map<string, n
   const sc = useMemo(() => overpayScenario(m, recorded, from, monthly, once, effect), [m, recorded, monthly, once, effect]);
   const presets = useMemo(() => PRESETS.map((p) => ({ p, r: overpayScenario(m, recorded, from, p, 0, effect) })), [m, recorded, effect]);
   const fill = `${(monthly / 1000000) * 100}%`;
+  // installments still ahead (the bank app counts these)
+  const paid = base.schedule.rows.filter((r) => r.month < from).length;
   const anything = monthly > 0 || once > 0;
 
   return (
@@ -255,7 +257,7 @@ function Simulator({ m, recorded }: { m: MortgageParams; recorded: Map<string, n
           <div class="fact">
             <span class="label">{effect === 'shorten' ? 'Szybciej o' : 'Nowa rata'}</span>
             <span class="value">{effect === 'shorten' ? (sc.savedMonths ? durationLabel(sc.savedMonths) : '—') : formatPLN(sc.newPayment)}</span>
-            <span class="foot">{effect === 'shorten' ? `${sc.schedule.months} rat zamiast ${base.schedule.months}` : `zamiast ${formatPLN(base.newPayment)}`}</span>
+            <span class="foot">{effect === 'shorten' ? `zostanie ${sc.schedule.months - paid} rat zamiast ${base.schedule.months - paid}` : `zamiast ${formatPLN(base.newPayment)}`}</span>
           </div>
           <div class="fact" style={{ gridColumn: '1 / -1' }}>
             <span class="label">Mniej odsetek</span>

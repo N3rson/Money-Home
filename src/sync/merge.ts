@@ -55,9 +55,9 @@ const TYPE_ORDER = { income: 0, bill: 1, overpayment: 2, expense: 3 } as const;
  * sorted by month. Git history then shows exactly which entries changed.
  */
 export function serialize(h: Household): string {
-  const entries = [...h.entries].sort(
-    (a, b) => a.month.localeCompare(b.month) || TYPE_ORDER[a.type] - TYPE_ORDER[b.type] || a.id.localeCompare(b.id),
-  );
+  // plain code-point order: identical on every phone, whatever its language settings
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  const entries = [...h.entries].sort((a, b) => cmp(a.month, b.month) || TYPE_ORDER[a.type] - TYPE_ORDER[b.type] || cmp(a.id, b.id));
   const head = {
     schema: h.schema,
     app: 'money-home',
