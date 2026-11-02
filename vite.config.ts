@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 
 /**
  * `virtual:seed` — optional private starting data.
- * The repository is public, so real budget data never lives in it. A local
+ * Real budget data never lives in the code repository. A local
  * JSON file (converted from the spreadsheet with tools/xlsx_to_json.py) can be
  * injected at build time with SEED_FILE=/path/to/budget.json.
  */

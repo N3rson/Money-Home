@@ -1,6 +1,6 @@
 node_modules/
 dist/
-# Prywatne dane (repo jest publiczne) — nigdy nie commitujemy budżetu
+# Prywatne dane — budżet nigdy nie trafia do repo z kodem
 seed/
 *.local.json
 *.xlsx

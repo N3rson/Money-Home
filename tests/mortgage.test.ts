@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { annuityPayment, simulate, overpayScenario, mortgageStatus } from '../src/model/mortgage';
 import type { MortgageParams } from '../src/model/types';
 
-// A made-up loan (the repository is public; no real figures here).
+// A made-up loan (no real figures in the code).
 const loan: MortgageParams = {
   propertyValue: 62500000,
   principal: 50000000,

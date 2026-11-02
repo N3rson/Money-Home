@@ -22,9 +22,9 @@ Testy porównują każdy miesiąc z wynikami policzonymi przez sam arkusz.
 
 ## Prywatność danych
 
-To repozytorium jest **publiczne**, więc **nie ma w nim żadnych danych budżetu**. Dane z arkusza
-konwertuje się lokalnie i podaje przy budowaniu (`SEED_FILE`), a docelowo trzymane są w osobnym,
-**prywatnym** repozytorium (jeden plik JSON), do którego aplikacja ma dostęp tokenem zapisanym tylko w telefonach.
+W kodzie **nie ma żadnych danych budżetu**, więc repozytorium może być nawet publiczne. Dane z arkusza
+konwertuje się lokalnie i podaje przy budowaniu (`SEED_FILE`), a docelowo trzymane są w **prywatnym**
+miejscu (jeden plik JSON), do którego aplikacja ma dostęp tokenem zapisanym tylko w telefonach.
 
 ## Rozwój
 

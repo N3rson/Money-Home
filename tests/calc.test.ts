@@ -45,8 +45,7 @@ describe('estimateAnnualRate', () => {
 
 /*
  * Parity with the spreadsheet. Runs only with the private seed file
- * (SEED_FILE=/path/budget.json); the repository is public, so no real
- * figures live here. The seed carries the sheet's own computed results
+ * (SEED_FILE=/path/budget.json); no real figures live in the code. The seed carries the sheet's own computed results
  * ("DOCHÓD VS OPŁATY") and the app must reproduce every month of them.
  */
 const seedPath = process.env.SEED_FILE;
