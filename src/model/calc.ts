@@ -184,11 +184,11 @@ export function yearsWithData(h: Household, ensure: number): number[] {
   return [...set].sort((a, b) => b - a);
 }
 
-/** Latest month <= `upTo` that has income, else `upTo`. */
-export function latestIncomeMonth(h: Household, upTo: MonthKey): MonthKey {
+/** Latest month <= `upTo` with any entry (the month the app opens on), else `upTo`. */
+export function latestEntryMonth(h: Household, upTo: MonthKey): MonthKey {
   let best: MonthKey | null = null;
   for (const e of liveEntries(h)) {
-    if (e.type === 'income' && e.month <= upTo && (!best || e.month > best)) best = e.month;
+    if (e.month <= upTo && (!best || e.month > best)) best = e.month;
   }
   return best ?? upTo;
 }
@@ -211,11 +211,11 @@ export function overpaymentsByMonth(h: Household): Map<MonthKey, number> {
   return map;
 }
 
-/** Latest mortgage installment recorded as a bill. */
+/** Latest mortgage installment recorded as a bill (a planned 0 zł one does not count). */
 export function lastInstallment(h: Household, upTo: MonthKey): { month: MonthKey; amount: number } | null {
   let best: { month: MonthKey; amount: number } | null = null;
   for (const e of liveEntries(h)) {
-    if (e.type === 'bill' && e.category === 'mortgage' && e.month <= upTo && (!best || e.month > best.month)) {
+    if (e.type === 'bill' && e.category === 'mortgage' && e.amount > 0 && e.month <= upTo && (!best || e.month > best.month)) {
       best = { month: e.month, amount: e.amount };
     }
   }
@@ -233,14 +233,17 @@ export interface BillProgress {
   paid: number;
   total: number;
   paidAmount: number;
+  /** Planned bills still at 0 zł. */
+  missing: number;
 }
 
 export function billProgress(bills: Entry[], today: MonthKey = currentMonth()): BillProgress {
-  const p: BillProgress = { count: 0, paid: 0, total: 0, paidAmount: 0 };
+  const p: BillProgress = { count: 0, paid: 0, total: 0, paidAmount: 0, missing: 0 };
   for (const e of bills) {
     if (e.type !== 'bill' || e.deleted) continue;
     p.count++;
     p.total += e.amount;
+    if (e.amount === 0) p.missing++;
     if (isPaid(e, today)) {
       p.paid++;
       p.paidAmount += e.amount;
@@ -249,11 +252,33 @@ export function billProgress(bills: Entry[], today: MonthKey = currentMonth()): 
   return p;
 }
 
-/** Bills of the latest month before `month` that had any, to copy forward. */
-export function billsToCopy(h: Household, month: MonthKey): Entry[] {
-  const entries = liveEntries(h).filter((e) => e.type === 'bill' && e.month < month);
-  if (!entries.length) return [];
-  const prev = entries.reduce((a, e) => (e.month > a ? e.month : a), entries[0].month);
-  const already = new Set(liveEntries(h).filter((e) => e.type === 'bill' && e.month === month).map((e) => e.category));
-  return entries.filter((e) => e.month === prev && !already.has(e.category));
+export interface FillRow {
+  category: string;
+  /** The planned 0 zł entry to fill in, or null when the month has none yet. */
+  entryId: string | null;
+  /** The last amount paid for this bill, before `month`. */
+  suggestion: number;
+  fromMonth: MonthKey;
+}
+
+/**
+ * Fixed bills of `month` still without an amount (planned at 0 zł or missing
+ * altogether), each with the last amount as a suggestion.
+ */
+export function billsToFill(h: Household, month: MonthKey): FillRow[] {
+  const bills = liveEntries(h).filter((e) => e.type === 'bill');
+  const rows: FillRow[] = [];
+  for (const c of h.billCategories) {
+    if (c.archived) continue;
+    const inMonth = bills.filter((e) => e.month === month && e.category === c.id);
+    if (inMonth.some((e) => e.amount > 0)) continue;
+    if (!inMonth.length && c.recurring === false) continue;
+    let last: Entry | null = null;
+    for (const e of bills) {
+      if (e.category === c.id && e.amount > 0 && e.month < month && (!last || e.month > last.month)) last = e;
+    }
+    if (!last) continue;
+    rows.push({ category: c.id, entryId: inMonth[0]?.id ?? null, suggestion: last.amount, fromMonth: last.month });
+  }
+  return rows;
 }

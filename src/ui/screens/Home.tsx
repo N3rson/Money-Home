@@ -1,14 +1,14 @@
 import { useMemo } from 'preact/hooks';
-import { lensView, summarizeMonth, summarizeYear, overpaymentsByMonth, lastInstallment, billsToCopy, overpaymentsByPerson, liveEntries } from '../../model/calc';
+import { lensView, summarizeMonth, summarizeYear, overpaymentsByMonth, lastInstallment, billsToFill, overpaymentsByPerson, liveEntries } from '../../model/calc';
 import { mortgageStatus } from '../../model/mortgage';
 import type { Household, MonthKey, Person } from '../../model/types';
-import { currentMonth, monthName, MONTHS_LOCATIVE, parseMonth, monthShortYear, durationLabel, addMonths } from '../../lib/months';
+import { currentMonth, monthName, MONTHS_LOCATIVE, parseMonth, monthShortYear, durationLabel } from '../../lib/months';
 import { formatPLN, percent } from '../../lib/money';
-import { Hanko, HeroMoney, Money, MonthNav, SegBar, Segmented, type SegPart } from '../components';
+import { Hanko, HeroMoney, Money, MonthNav, MonthSwiper, SegBar, Segmented, type SegPart } from '../components';
 import { Enso, MonthBars, PairBars, type Tone } from '../charts';
 import { Icon } from '../icons';
 import { setLens, setMonth, setTab, useStore, type Prefs } from '../../model/store';
-import { openCopyBills } from '../sheets';
+import { openFillBills } from '../sheets';
 
 export function Home() {
   const h = useStore((s) => s.household);
@@ -39,9 +39,9 @@ function toneFor(h: Household, lens: string): Tone {
   return h.people.find((p) => p.id === lens)?.tone ?? 'neutral';
 }
 
-function LensSummary({ h, month, lens, year }: { h: Household; month: MonthKey; lens: string; year: number }) {
+/** "Zostaje w …" card for one month; the swiper also draws it for the months next to it. */
+function MonthHero({ h, month, lens }: { h: Household; month: MonthKey; lens: string }) {
   const s = useMemo(() => summarizeMonth(h, month), [h, month]);
-  const ys = useMemo(() => summarizeYear(h, year, lens), [h, year, lens]);
   const v = lensView(s, lens);
   const person = h.people.find((p) => p.id === lens);
   const tone = toneFor(h, lens);
@@ -66,8 +66,7 @@ function LensSummary({ h, month, lens, year }: { h: Household; month: MonthKey; 
   const kept = v.income > 0 ? percent(Math.max(0, v.left), v.income) : null;
 
   return (
-    <>
-      <section class="card hero" aria-label="Bilans miesiąca">
+    <section class="card hero" aria-label="Bilans miesiąca">
         <div class="eyebrow">{lens === 'all' ? `Zostaje w ${loc}` : `${person?.name ?? ''}: zostaje po opłatach`}</div>
         <HeroMoney value={Math.round(v.left)} />
         <p class="hero-sub">
@@ -105,7 +104,17 @@ function LensSummary({ h, month, lens, year }: { h: Household; month: MonthKey; 
             )}
           </div>
         )}
-      </section>
+    </section>
+  );
+}
+
+function LensSummary({ h, month, lens, year }: { h: Household; month: MonthKey; lens: string; year: number }) {
+  const ys = useMemo(() => summarizeYear(h, year, lens), [h, year, lens]);
+  const tone = toneFor(h, lens);
+
+  return (
+    <>
+      <MonthSwiper label="Przesuń w bok, żeby zmienić miesiąc" month={month} onChange={setMonth} render={(m) => <MonthHero h={h} month={m} lens={lens} />} />
 
       {/* right under the month card: picking a month here updates the numbers above */}
       <div class="card" aria-label={`Miesiące ${year}`}>
@@ -150,26 +159,18 @@ function LensSummary({ h, month, lens, year }: { h: Household; month: MonthKey; 
   );
 }
 
-function Compare({ h, month, a, b }: { h: Household; month: MonthKey; a: Person; b: Person }) {
-  const { year } = parseMonth(month);
+/** Both people side by side for one month (also drawn for the neighbouring months while swiping). */
+function CompareMonth({ h, month, a, b }: { h: Household; month: MonthKey; a: Person; b: Person }) {
   const s = useMemo(() => summarizeMonth(h, month), [h, month]);
-  const ya = useMemo(() => summarizeYear(h, year, a.id), [h, year, a.id]);
-  const yb = useMemo(() => summarizeYear(h, year, b.id), [h, year, b.id]);
   const va = lensView(s, a.id);
   const vb = lensView(s, b.id);
-  const ovp = overpaymentsByPerson(h);
-  const contrib = (id: string) => (h.mortgage.contributions.find((c) => c.person === id)?.amount ?? 0) + (ovp[id] ?? 0);
-  const ca = contrib(a.id);
-  const cb = contrib(b.id);
   const loc = MONTHS_LOCATIVE[parseMonth(month).month - 1];
-
   const rows: [string, number, number, boolean?][] = [
     ['Dochód', va.income, vb.income],
     ['Połowa opłat', va.bills, vb.bills],
     ['Nadpłaty', va.overpay, vb.overpay],
     ['Zostaje', va.left, vb.left, true],
   ];
-
   return (
     <>
       <div class="compare-head">
@@ -238,6 +239,23 @@ function Compare({ h, month, a, b }: { h: Household; month: MonthKey; a: Person;
           </div>
         )}
       </section>
+    </>
+  );
+}
+
+function Compare({ h, month, a, b }: { h: Household; month: MonthKey; a: Person; b: Person }) {
+  const { year } = parseMonth(month);
+  const ya = useMemo(() => summarizeYear(h, year, a.id), [h, year, a.id]);
+  const yb = useMemo(() => summarizeYear(h, year, b.id), [h, year, b.id]);
+  const ovp = overpaymentsByPerson(h);
+  const contrib = (id: string) => (h.mortgage.contributions.find((c) => c.person === id)?.amount ?? 0) + (ovp[id] ?? 0);
+  const ca = contrib(a.id);
+  const cb = contrib(b.id);
+
+  return (
+    <>
+      <MonthSwiper label="Przesuń w bok, żeby zmienić miesiąc" month={month} onChange={setMonth} render={(m) => <CompareMonth h={h} month={m} a={a} b={b} />} />
+
 
       <section class="section" aria-label={`Rok ${year}`}>
         <div class="section-head">
@@ -323,10 +341,11 @@ function CurrentMonthNudge({ h }: { h: Household }) {
   const month = useStore((s) => s.month);
   const now = currentMonth();
   const s = summarizeMonth(h, now);
-  const copy = billsToCopy(h, now);
+  const fill = billsToFill(h, now);
   if (month !== now && month > now) return null;
   const missingIncome = !s.hasIncome;
-  if (!missingIncome && !copy.length) return null;
+  if (!missingIncome && !fill.length) return null;
+  const fromMonth = fill.map((r) => r.fromMonth).sort().pop();
   const count = liveEntries(h).filter((e) => e.month === now).length;
   return (
     <section class="card flat" aria-label={`${monthName(now)} w toku`}>
@@ -335,12 +354,12 @@ function CurrentMonthNudge({ h }: { h: Household }) {
         <span class="tag">{count} {count === 1 ? 'wpis' : count >= 2 && count <= 4 ? 'wpisy' : 'wpisów'}</span>
       </div>
       <p class="soft" style={{ fontSize: '14px', marginBottom: '14px' }}>
-        {missingIncome && copy.length ? 'Brakuje jeszcze dochodów i stałych opłat.' : missingIncome ? 'Brakuje jeszcze dochodów.' : 'Brakuje jeszcze stałych opłat.'}
+        {missingIncome && fill.length ? 'Brakuje jeszcze dochodów i kwot opłat.' : missingIncome ? 'Brakuje jeszcze dochodów.' : 'Brakuje jeszcze kwot opłat.'}
       </p>
       <div class="btn-row">
-        {copy.length > 0 && (
-          <button class="btn secondary sm" type="button" onClick={() => openCopyBills(now)}>
-            <Icon name="layers" size={18} /> Opłaty jak w {MONTHS_LOCATIVE[parseMonth(addMonths(now, -1)).month - 1]}
+        {fill.length > 0 && fromMonth && (
+          <button class="btn secondary sm" type="button" onClick={() => openFillBills(now)}>
+            <Icon name="layers" size={18} /> Kwoty jak w {MONTHS_LOCATIVE[parseMonth(fromMonth).month - 1]}
           </button>
         )}
         <button

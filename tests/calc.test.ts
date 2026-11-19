@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { householdFromSeed, estimateAnnualRate } from '../src/model/defaults';
-import { summarizeMonth, summarizeYear, lensView, billsToCopy } from '../src/model/calc';
+import { summarizeMonth, summarizeYear, lensView, billsToFill } from '../src/model/calc';
 import { parseAmount, formatPLN } from '../src/lib/money';
 import { durationLabel } from '../src/lib/months';
 import { annuityPayment } from '../src/model/mortgage';
@@ -97,10 +97,10 @@ describe.skipIf(!hasSeed)('spreadsheet parity', () => {
     }
   });
 
-  it('suggests the previous month bills to copy', () => {
+  it('suggests last amounts for the next month bills', () => {
     const last = [...months].reverse().find((m) => summarizeMonth(h!, m).bills > 0)!;
     const next = `${last.slice(0, 5)}${String(Number(last.slice(5)) + 1).padStart(2, '0')}`;
-    if (Number(last.slice(5)) < 12) expect(billsToCopy(h!, next).length).toBeGreaterThan(0);
+    if (Number(last.slice(5)) < 12) expect(billsToFill(h!, next).length).toBeGreaterThan(0);
   });
 
   it('estimates a plausible mortgage rate from the installments', () => {
@@ -132,6 +132,6 @@ describe('paid bills', () => {
   it('progress counts bills and paid amounts', async () => {
     const { billProgress } = await import('../src/model/calc');
     const p = billProgress([bill('2026-11', 300000, true), bill('2026-11', 50000), bill('2026-11', 25000, true)], '2026-11');
-    expect(p).toEqual({ count: 3, paid: 2, total: 375000, paidAmount: 325000 });
+    expect(p).toEqual({ count: 3, paid: 2, total: 375000, paidAmount: 325000, missing: 0 });
   });
 });

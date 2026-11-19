@@ -3,7 +3,8 @@ import seed from 'virtual:seed';
 import type { Entry, Household, MonthKey, MortgageParams, Person, PersonId } from './types';
 import { emptyHousehold, householdFromSeed } from './defaults';
 import { currentMonth } from '../lib/months';
-import { latestIncomeMonth, type Lens } from './calc';
+import { latestEntryMonth, type Lens } from './calc';
+import { plannedEntries } from './recurring';
 
 export type Tab = 'start' | 'wpisy' | 'kredyt' | 'wiecej';
 export type Theme = 'system' | 'light' | 'dark';
@@ -96,7 +97,14 @@ function initialTab(): Tab {
   return (['start', 'wpisy', 'kredyt', 'wiecej'] as Tab[]).includes(h as Tab) ? (h as Tab) : 'start';
 }
 
-const household = initialHousehold();
+// plan this month's fixed bills (0 zł) and remaining installments before the first render
+const loaded = initialHousehold();
+const plannedAtStart = plannedEntries(loaded, currentMonth());
+const household: Household = plannedAtStart.length ? { ...loaded, entries: [...loaded.entries, ...plannedAtStart] } : loaded;
+if (plannedAtStart.length) {
+  write(KEY_DATA, household);
+  write(KEY_PENDING, (read<number>(KEY_PENDING) ?? 0) + plannedAtStart.length);
+}
 const storedPrefs = read<Prefs>(KEY_PREFS);
 const prefs: Prefs = {
   me: storedPrefs?.me ?? (seed ? household.people[0]?.id ?? null : null),
@@ -111,7 +119,7 @@ let state: State = {
   household,
   prefs,
   tab: initialTab(),
-  month: latestIncomeMonth(household, currentMonth()),
+  month: latestEntryMonth(household, currentMonth()),
   pending: read<number>(KEY_PENDING) ?? 0,
   sync: {
     config: storedSync?.config ?? null,
@@ -174,8 +182,19 @@ export function applyRemote(next: Household, sent: number) {
   write(KEY_DATA, next);
   const pending = Math.max(0, state.pending - sent);
   write(KEY_PENDING, pending);
-  const month = state.household.entries.length === 0 && next.entries.length > 0 ? latestIncomeMonth(next, currentMonth()) : state.month;
+  const month = state.household.entries.length === 0 && next.entries.length > 0 ? latestEntryMonth(next, currentMonth()) : state.month;
   setState({ household: next, pending, month });
+  ensurePlanned();
+}
+
+/** Add the planned entries this month still lacks (new month, new data from the other phone). */
+export function ensurePlanned() {
+  const today = currentMonth();
+  const add = plannedEntries(state.household, today);
+  if (!add.length) return;
+  const wasEmpty = !state.household.entries.some((e) => !e.deleted && e.month === today);
+  commit({ ...state.household, entries: [...state.household.entries, ...add] }, add.length);
+  if (wasEmpty && state.month < today) setState({ month: today });
 }
 
 export function setSync(patch: Partial<SyncState>) {
@@ -263,7 +282,8 @@ export function addBillCategory(name: string): string {
   while (state.household.billCategories.some((c) => c.id === id)) id = `${base}-${n++}`;
   commit({
     ...state.household,
-    billCategories: [...state.household.billCategories, { id, name: name.trim() }],
+    // a new kind of bill is not planned every month until switched on in settings
+    billCategories: [...state.household.billCategories, { id, name: name.trim(), recurring: false }],
     meta: { ...state.household.meta, categoriesUpdatedAt: Date.now() },
   });
   return id;
@@ -277,6 +297,15 @@ export function renameBillCategory(id: string, name: string) {
   });
 }
 
+export function setCategoryRecurring(id: string, recurring: boolean) {
+  commit({
+    ...state.household,
+    billCategories: state.household.billCategories.map((c) => (c.id === id ? { ...c, recurring } : c)),
+    meta: { ...state.household.meta, categoriesUpdatedAt: Date.now() },
+  });
+  if (recurring) ensurePlanned();
+}
+
 export function setCategoryArchived(id: string, archived: boolean) {
   commit({
     ...state.household,
@@ -288,14 +317,16 @@ export function setCategoryArchived(id: string, archived: boolean) {
 /** Load a whole household (from a file) as local changes; sync sends it on. */
 export function importHousehold(next: Household) {
   commit(next, Math.max(1, next.entries.length));
-  setState({ month: latestIncomeMonth(next, currentMonth()) });
+  ensurePlanned();
+  setState({ month: latestEntryMonth(state.household, currentMonth()) });
 }
 
 export function resetToSeed() {
   const next = seed ? householdFromSeed(seed) : emptyHousehold();
   write(KEY_DATA, next);
   write(KEY_PENDING, 0);
-  setState({ household: next, pending: 0, month: latestIncomeMonth(next, currentMonth()) });
+  setState({ household: next, pending: 0, month: latestEntryMonth(next, currentMonth()) });
+  ensurePlanned();
   toast('Przywrócono dane z arkusza');
 }
 
@@ -359,5 +390,9 @@ if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
     const t = initialTab();
     if (t !== state.tab) setState({ tab: t });
+  });
+  // a new month can begin while the app sits in the background
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') ensurePlanned();
   });
 }

@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'preact/hooks';
 import type { Entry, EntryType, Household, MonthKey } from '../../model/types';
 import { INCOME_CATEGORIES, TYPE_LABEL_PLURAL } from '../../model/defaults';
-import { billProgress, billsToCopy, isPaid, liveEntries, summarizeMonth, summarizeYear, lensView, yearsWithData } from '../../model/calc';
+import { billProgress, billsToFill, isPaid, liveEntries, summarizeMonth, summarizeYear, lensView, yearsWithData } from '../../model/calc';
 import { setMonth, setPaid, useStore } from '../../model/store';
 import { formatPLN } from '../../lib/money';
-import { MONTHS_LOCATIVE, MONTHS_SHORT, monthKey, monthName, parseMonth, addMonths } from '../../lib/months';
-import { Chips, Empty, Hanko, Money, MonthNav, Segmented } from '../components';
+import { MONTHS_LOCATIVE, MONTHS_SHORT, monthKey, monthName, parseMonth } from '../../lib/months';
+import { Chips, Empty, Hanko, Money, MonthNav, MonthSwiper, Segmented } from '../components';
 import { Icon, billIcon } from '../icons';
-import { openCopyBills, openEntry } from '../sheets';
+import { openFillBills, openEntry } from '../sheets';
 
 type Filter = 'all' | EntryType;
 const ORDER: EntryType[] = ['income', 'bill', 'overpayment', 'expense'];
@@ -37,18 +37,34 @@ function MonthList() {
   const h = useStore((s) => s.household);
   const month = useStore((s) => s.month);
   const [filter, setFilter] = useState<Filter>('all');
-  const s = useMemo(() => summarizeMonth(h, month), [h, month]);
-  const entries = useMemo(() => liveEntries(h).filter((e) => e.month === month), [h, month]);
-  const copy = billsToCopy(h, month);
-  const prevLoc = MONTHS_LOCATIVE[parseMonth(addMonths(month, -1)).month - 1];
-
-  const groups = ORDER.filter((t) => filter === 'all' || filter === t)
-    .map((t) => ({ type: t, items: sortEntries(entries.filter((e) => e.type === t), h) }))
-    .filter((g) => g.items.length);
-
   return (
     <>
       <MonthNav month={month} onChange={setMonth} />
+      <Chips
+        label="Pokaż"
+        scroll
+        value={filter}
+        onChange={setFilter}
+        options={[{ value: 'all' as Filter, label: 'Wszystkie' }, ...ORDER.map((t) => ({ value: t as Filter, label: TYPE_LABEL_PLURAL[t] }))]}
+      />
+      <MonthSwiper label="Przesuń w bok, żeby zmienić miesiąc" month={month} onChange={setMonth} render={(m) => <MonthContent h={h} month={m} filter={filter} />} />
+    </>
+  );
+}
+
+/** One month of entries; also drawn for the neighbouring months while swiping. */
+function MonthContent({ h, month, filter }: { h: Household; month: MonthKey; filter: Filter }) {
+  const s = useMemo(() => summarizeMonth(h, month), [h, month]);
+  const entries = useMemo(() => liveEntries(h).filter((e) => e.month === month), [h, month]);
+  const fill = useMemo(() => billsToFill(h, month), [h, month]);
+  const groups = ORDER.filter((t) => filter === 'all' || filter === t)
+    .map((t) => ({ type: t, items: sortEntries(entries.filter((e) => e.type === t), h) }))
+    .filter((g) => g.items.length);
+  const planned = fill.filter((r) => r.entryId).length;
+  const fromLoc = fill.length ? MONTHS_LOCATIVE[parseMonth(fill.map((r) => r.fromMonth).sort().pop()!).month - 1] : '';
+
+  return (
+    <>
       <div class="facts">
         <div class="fact">
           <span class="label">Wpłynęło</span>
@@ -59,18 +75,11 @@ function MonthList() {
           <span class="value num">{formatPLN(s.outTotal)}</span>
         </div>
       </div>
-      <Chips
-        label="Pokaż"
-        scroll
-        value={filter}
-        onChange={setFilter}
-        options={[{ value: 'all' as Filter, label: 'Wszystkie' }, ...ORDER.map((t) => ({ value: t as Filter, label: TYPE_LABEL_PLURAL[t] }))]}
-      />
-      {copy.length > 0 && !entries.some((e) => e.type === 'bill') && (
-        <button class="note-card" type="button" style={{ textAlign: 'left', width: '100%' }} onClick={() => openCopyBills(month)}>
+      {fill.length > 0 && (filter === 'all' || filter === 'bill') && (
+        <button class="note-card" type="button" style={{ textAlign: 'left', width: '100%' }} onClick={() => openFillBills(month)}>
           <Icon name="layers" size={20} />
           <span>
-            <strong style={{ color: 'var(--ink)' }}>Brak opłat stałych.</strong> Dodaj je jednym ruchem z kwotami jak w {prevLoc} ({formatPLN(copy.reduce((a, e) => a + e.amount, 0))}).
+            <strong style={{ color: 'var(--ink)' }}>{planned ? `Kwoty do uzupełnienia: ${fill.length}.` : 'Brak opłat stałych.'}</strong> Wpisz je jednym ruchem, z kwotami jak w {fromLoc} ({formatPLN(fill.reduce((a, r) => a + r.suggestion, 0))}).
           </span>
         </button>
       )}
@@ -133,7 +142,8 @@ function Group({ type, items, h, month }: { type: EntryType; items: Entry[]; h: 
 function PaidProgress({ items }: { items: Entry[] }) {
   const p = billProgress(items);
   if (!p.count) return null;
-  const share = p.total ? p.paidAmount / p.total : 0;
+  // by amount once amounts are known, by count while they are still 0 zł
+  const share = p.total ? p.paidAmount / p.total : p.paid / p.count;
   const pct = Math.round(share * 100);
   const done = p.paid === p.count;
   return (
@@ -143,7 +153,7 @@ function PaidProgress({ items }: { items: Entry[] }) {
       </div>
       <div class="paid-caption">
         <span>{done ? 'Wszystko opłacone' : `Opłacone ${pct}% · ${p.paid} z ${p.count}`}</span>
-        {!done && <span class="num">zostało {formatPLN(p.total - p.paidAmount)}</span>}
+        {!done && (p.missing ? <span>{p.missing} do uzupełnienia</span> : <span class="num">zostało {formatPLN(p.total - p.paidAmount)}</span>)}
       </div>
     </div>
   );
@@ -154,22 +164,35 @@ function shortDate(ts: number): string {
   return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()].toLowerCase()}`;
 }
 
-function BillRow({ e, h }: { e: Entry; h: Household }) {
-  const name = h.billCategories.find((c) => c.id === e.category)?.name ?? 'Opłata';
+/** A bill or an installment: opens on tap, with a round check at the right to tick it off as paid. */
+function CheckRow({ e, h }: { e: Entry; h: Household }) {
+  const person = h.people.find((p) => p.id === e.person);
+  const isBill = e.type === 'bill';
+  const name = isBill ? h.billCategories.find((c) => c.id === e.category)?.name ?? 'Opłata' : e.title || 'Wydatek';
   const paid = isPaid(e);
-  const status = paid ? (e.paidAt ? `opłacone ${shortDate(e.paidAt)}` : 'opłacone') : 'do zapłaty';
+  const status = paid ? (e.paidAt ? `opłacone ${shortDate(e.paidAt)}` : 'opłacone') : e.amount === 0 ? 'do uzupełnienia' : 'do zapłaty';
+  const extra = isBill ? ['po połowie'] : [e.series ? `rata ${e.series.index} z ${e.series.count}` : '', person ? `płaci ${person.name}` : 'wspólny'];
+  const lead = isBill ? (
+    <span class="glyph">
+      <Icon name={billIcon(e.category)} size={17} />
+    </span>
+  ) : person ? (
+    <Hanko person={person} />
+  ) : (
+    <span class="glyph">
+      <Icon name="bag" size={17} />
+    </span>
+  );
   return (
     <div class={`row bill-row ${paid ? 'is-paid' : ''}`}>
       <button class="row-main" type="button" onClick={() => openEntry({ id: e.id })}>
-        <span class="glyph">
-          <Icon name={billIcon(e.category)} size={17} />
-        </span>
+        {lead}
         <span class="main">
           <span class="title">{name}</span>
-          <span class="sub">{[status, 'po połowie', e.note].filter(Boolean).join(' · ')}</span>
+          <span class="sub">{[status, ...extra, e.note].filter(Boolean).join(' · ')}</span>
         </span>
         <span class="amount">
-          <Money value={e.amount} />
+          <Money value={e.amount} class={e.amount === 0 ? 'zero' : ''} />
         </span>
       </button>
       <button
@@ -186,7 +209,7 @@ function BillRow({ e, h }: { e: Entry; h: Household }) {
 }
 
 function EntryRow({ e, h }: { e: Entry; h: Household }) {
-  if (e.type === 'bill') return <BillRow e={e} h={h} />;
+  if (e.type === 'bill' || (e.type === 'expense' && e.series)) return <CheckRow e={e} h={h} />;
   const person = h.people.find((p) => p.id === e.person);
   let title = '';
   const sub: string[] = [];

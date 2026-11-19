@@ -12,6 +12,8 @@ export interface Category {
   id: string;
   name: string;
   archived?: boolean;
+  /** Bills: planned at 0 zł in every new month. Missing = yes (older data). */
+  recurring?: boolean;
 }
 
 /** Installment purchase: one entry per month, linked by series id. */

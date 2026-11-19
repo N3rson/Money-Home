@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import qrcode from 'qrcode-generator';
 import type { Entry, EntryType, Household, MonthKey, MortgageParams, Person, SeedFile } from '../model/types';
 import { INCOME_CATEGORIES, TYPE_LABEL, householdFromSeed } from '../model/defaults';
-import { liveEntries, billsToCopy, isPaid } from '../model/calc';
+import { liveEntries, billsToFill, isPaid } from '../model/calc';
 import {
   addBillCategory,
   addEntries,
@@ -12,6 +12,7 @@ import {
   importHousehold,
   renameBillCategory,
   setCategoryArchived,
+  setCategoryRecurring,
   setMe,
   setMonth as setAppMonth,
   toast,
@@ -22,7 +23,7 @@ import {
   type EntryDraft,
 } from '../model/store';
 import { amountInputValue, formatPLN, parseAmount } from '../lib/money';
-import { addMonths, currentMonth, monthLabel, MONTHS_LOCATIVE, parseMonth } from '../lib/months';
+import { addMonths, currentMonth, monthLabel, MONTHS_SHORT, parseMonth } from '../lib/months';
 import { Chips, Field, Hanko, MonthNav, Segmented, Sheet, Stepper, Switch } from './components';
 import { Icon, billIcon } from './icons';
 import { Scanner } from './scanner';
@@ -35,7 +36,7 @@ import { APP_URL, DATA_PATH, DEFAULT_REPO, TOKEN_URL } from '../config';
 
 type SheetState =
   | { kind: 'entry'; id?: string; type?: EntryType; month?: MonthKey }
-  | { kind: 'copyBills'; month: MonthKey }
+  | { kind: 'fillBills'; month: MonthKey }
   | { kind: 'invite' }
   | { kind: 'join' }
   | { kind: 'connect' }
@@ -52,7 +53,7 @@ function setSheet(s: SheetState | null) {
 }
 export const closeSheet = () => setSheet(null);
 export const openEntry = (opts: { id?: string; type?: EntryType; month?: MonthKey } = {}) => setSheet({ kind: 'entry', ...opts });
-export const openCopyBills = (month: MonthKey) => setSheet({ kind: 'copyBills', month });
+export const openFillBills = (month: MonthKey) => setSheet({ kind: 'fillBills', month });
 export const openInvite = () => setSheet({ kind: 'invite' });
 export const openJoin = () => setSheet({ kind: 'join' });
 export const openConnect = () => setSheet({ kind: 'connect' });
@@ -75,8 +76,8 @@ export function SheetHost() {
   switch (current.kind) {
     case 'entry':
       return <EntryEditor key={current.id ?? 'new'} id={current.id} type={current.type} month={current.month} />;
-    case 'copyBills':
-      return <CopyBills month={current.month} />;
+    case 'fillBills':
+      return <FillBills month={current.month} />;
     case 'invite':
       return <Invite />;
     case 'join':
@@ -117,7 +118,7 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
   const defaultMonth = initialMonth ?? (tab === 'wpisy' ? selectedMonth : currentMonth());
 
   const [type, setType] = useState<EntryType>(existing?.type ?? initialType ?? 'expense');
-  const [amount, setAmount] = useState(existing ? amountInputValue(existing.amount) : '');
+  const [amount, setAmount] = useState(existing && existing.amount !== 0 ? amountInputValue(existing.amount) : '');
   const [month, setMonthLocal] = useState<MonthKey>(existing?.month ?? defaultMonth);
   const [person, setPerson] = useState<string>(existing?.person ?? (existing?.type === 'expense' ? '' : me ?? h.people[0]?.id ?? ''));
   const [incomeCat, setIncomeCat] = useState(existing?.type === 'income' ? existing.category ?? 'base' : 'base');
@@ -134,7 +135,8 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
   const [tried, setTried] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [newCat, setNewCat] = useState<string | null>(null);
-  const [paid, setPaidLocal] = useState(existing?.type === 'bill' ? isPaid(existing) : false);
+  const checkable = existing ? existing.type === 'bill' || !!existing.series : false;
+  const [paid, setPaidLocal] = useState(existing && checkable ? isPaid(existing) : false);
 
   const parsed = parseAmount(amount);
   const amountError = parsed === null ? 'Wpisz kwotę, np. 120,50' : parsed < 0 ? 'Kwota nie może być ujemna' : parsed === 0 && !(type === 'expense' && note.trim()) ? 'Kwota musi być większa od zera' : null;
@@ -142,7 +144,7 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
   const valid = !amountError && !titleError;
 
   const suggestion = useMemo(() => {
-    if (existing) return null;
+    if (existing && existing.amount !== 0) return null;
     if (type === 'income') return lastAmount(live, (e) => e.type === 'income' && e.person === person && e.category === incomeCat, month);
     if (type === 'bill') return lastAmount(live, (e) => e.type === 'bill' && e.category === billCat, month);
     if (type === 'overpayment') return lastAmount(live, (e) => e.type === 'overpayment' && e.person === person, month);
@@ -158,6 +160,10 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
       Object.assign(base, { category: billCat, paid, paidAt, paidBy: paid ? existing?.paidBy ?? me ?? undefined : undefined });
     }
     if (type === 'expense') Object.assign(base, { title: title.trim(), person: expensePayer || undefined });
+    if (type === 'expense' && existing?.series) {
+      const paidAt = paid ? (existing.paid && existing.paidAt ? existing.paidAt : Date.now()) : undefined;
+      Object.assign(base, { paid, paidAt, paidBy: paid ? existing.paidBy ?? me ?? undefined : undefined });
+    }
     if (note.trim()) base.note = note.trim();
     return base;
   };
@@ -291,7 +297,7 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
           </Field>
         )}
 
-        {type === 'bill' && (
+        {(type === 'bill' || (type === 'expense' && existing?.series)) && (
           <div class="toggle-row">
             <div>
               <div style={{ fontWeight: 600 }}>Opłacone</div>
@@ -377,28 +383,31 @@ function EntryEditor({ id, type: initialType, month: initialMonth }: { id?: stri
   );
 }
 
-// ------------------------------------------------------------------ copy bills
+// ------------------------------------------------------------------ fill in bill amounts
 
-function CopyBills({ month }: { month: MonthKey }) {
+/** The month's fixed bills still at 0 zł (or missing), pre-filled with the last amounts. */
+function FillBills({ month }: { month: MonthKey }) {
   const h = useStore((s) => s.household);
-  const source = billsToCopy(h, month);
+  const source = useMemo(() => billsToFill(h, month), []);
   const cats = Object.fromEntries(h.billCategories.map((c) => [c.id, c.name]));
-  const [rows, setRows] = useState(() => source.map((e) => ({ category: e.category!, amount: amountInputValue(e.amount), on: true })));
-  const prevLoc = source[0] ? MONTHS_LOCATIVE[parseMonth(source[0].month).month - 1] : '';
+  const [rows, setRows] = useState(() => source.map((r) => ({ ...r, amount: amountInputValue(r.suggestion), on: true })));
   const chosen = rows.filter((r) => r.on && parseAmount(r.amount));
   const total = chosen.reduce((a, r) => a + (parseAmount(r.amount) ?? 0), 0);
+  const word = (n: number) => (n === 1 ? 'opłatę' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'opłaty' : 'opłat');
 
-  const add = () => {
-    addEntries(chosen.map((r) => ({ type: 'bill' as const, month, category: r.category, amount: parseAmount(r.amount)! })));
+  const save = () => {
+    const toAdd = chosen.filter((r) => !r.entryId);
+    for (const r of chosen) if (r.entryId) updateEntry(r.entryId, { amount: parseAmount(r.amount)! });
+    if (toAdd.length) addEntries(toAdd.map((r) => ({ type: 'bill' as const, month, category: r.category, amount: parseAmount(r.amount)! })));
     setAppMonth(month);
-    toast(`Dodano ${chosen.length} ${chosen.length === 1 ? 'opłatę' : chosen.length < 5 ? 'opłaty' : 'opłat'} · ${formatPLN(total)}`);
+    toast(`Uzupełniono ${chosen.length} ${word(chosen.length)} · ${formatPLN(total)}`);
     closeSheet();
   };
 
   return (
-    <Sheet title="Opłaty stałe" onClose={closeSheet}>
+    <Sheet title="Kwoty opłat" onClose={closeSheet}>
       <p class="soft">
-        Kwoty jak w {prevLoc}. Popraw te, które się zmieniły, i dodaj wszystko naraz do: <strong>{monthLabel(month).toLowerCase()}</strong>.
+        Podpowiedzi to ostatnie kwoty. Popraw te, które się zmieniły: <strong>{monthLabel(month).toLowerCase()}</strong>.
       </p>
       <div class="card tight">
         {rows.map((r, i) => (
@@ -406,6 +415,7 @@ function CopyBills({ month }: { month: MonthKey }) {
             <Switch checked={r.on} label={cats[r.category] ?? r.category} onChange={(on) => setRows(rows.map((x, j) => (j === i ? { ...x, on } : x)))} />
             <div class="main">
               <span class="title">{cats[r.category] ?? r.category}</span>
+              <span class="sub">ostatnio {MONTHS_SHORT[parseMonth(r.fromMonth).month - 1].toLowerCase()}</span>
             </div>
             <input
               class="input num"
@@ -419,8 +429,8 @@ function CopyBills({ month }: { month: MonthKey }) {
           </div>
         ))}
       </div>
-      <button class="btn primary block" type="button" disabled={!chosen.length} onClick={add}>
-        Dodaj {chosen.length} {chosen.length === 1 ? 'opłatę' : chosen.length < 5 ? 'opłaty' : 'opłat'} · {formatPLN(total)}
+      <button class="btn primary block" type="button" disabled={!chosen.length} onClick={save}>
+        Zapisz {chosen.length} {word(chosen.length)} · {formatPLN(total)}
       </button>
     </Sheet>
   );
@@ -926,10 +936,10 @@ function CategoriesEditor() {
   }, [h]);
   return (
     <Sheet title="Opłaty stałe" onClose={closeSheet}>
-      <p class="soft">Zmień nazwę albo ukryj opłatę, której już nie płacicie. Historia zostaje.</p>
+      <p class="soft">„Co miesiąc” dodaje opłatę z kwotą 0 zł na początku każdego miesiąca. Możesz też zmienić nazwę albo ukryć opłatę, której już nie płacicie; historia zostaje.</p>
       <div class="card tight">
         {h.billCategories.map((c) => (
-          <div class="row" key={c.id} style={{ gridTemplateColumns: 'auto minmax(0,1fr) auto' }}>
+          <div class="row cat-row" key={c.id}>
             <span class="glyph">
               <Icon name={billIcon(c.id)} size={17} />
             </span>
@@ -946,6 +956,12 @@ function CategoriesEditor() {
               />
               <span class="sub">{counts[c.id] ?? 0} wpisów</span>
             </div>
+            {!c.archived && (
+              <label class="cat-recurring">
+                <span>co miesiąc</span>
+                <Switch checked={c.recurring !== false} onChange={(v) => setCategoryRecurring(c.id, v)} label={`${c.name}: co miesiąc`} />
+              </label>
+            )}
             <button class="btn secondary sm" type="button" onClick={() => setCategoryArchived(c.id, !c.archived)}>
               {c.archived ? 'Przywróć' : 'Ukryj'}
             </button>

@@ -5,6 +5,9 @@ import { decodeBase64Utf8, encodeBase64Utf8 } from '../src/sync/github';
 import { emptyHousehold } from '../src/model/defaults';
 import type { Entry, Household } from '../src/model/types';
 
+// the engine tests start from a fresh phone, also when the private seed is present
+vi.mock('virtual:seed', () => ({ default: null }));
+
 const entry = (id: string, amount: number, updatedAt: number, extra: Partial<Entry> = {}): Entry => ({
   id,
   type: 'expense',

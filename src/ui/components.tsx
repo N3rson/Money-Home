@@ -1,8 +1,9 @@
 import type { ComponentChildren, JSX } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { moneyParts } from '../lib/money';
-import { addMonths, monthLabel, parseMonth } from '../lib/months';
+import { MONTHS, MONTHS_SHORT, addMonths, currentMonth, monthKey, monthLabel, parseMonth } from '../lib/months';
 import type { MonthKey, Person } from '../model/types';
+import { useStore } from '../model/store';
 import { Icon } from './icons';
 
 /** 12 345,67 zł with the grosze and unit set quieter. */
@@ -89,21 +90,206 @@ export function Chips<T extends string>({
   );
 }
 
+/** Month name between arrows; tapping the name opens a year + 12 months picker. */
 export function MonthNav({ month, onChange, min, max, sub }: { month: MonthKey; onChange: (m: MonthKey) => void; min?: MonthKey; max?: MonthKey; sub?: string }) {
   const { year } = parseMonth(month);
   const label = monthLabel(month).split(' ')[0];
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation(); // close the picker, not the sheet around it
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
   return (
-    <div class="month-nav">
+    <div class="month-nav" ref={ref}>
       <button class="icon-btn" type="button" aria-label="Poprzedni miesiąc" disabled={!!min && month <= min} onClick={() => onChange(addMonths(month, -1))}>
         <Icon name="left" size={20} />
       </button>
-      <div class="label" aria-live="polite">
+      <button class="label" type="button" aria-live="polite" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}>
         <strong>{label}</strong>
-        <span>{sub ?? year}</span>
-      </div>
+        <span>
+          {sub ?? year}
+          <Icon name="down" size={13} class={`nav-caret${open ? ' open' : ''}`} />
+        </span>
+      </button>
       <button class="icon-btn" type="button" aria-label="Następny miesiąc" disabled={!!max && month >= max} onClick={() => onChange(addMonths(month, 1))}>
         <Icon name="right" size={20} />
       </button>
+      {open && (
+        <MonthPicker
+          month={month}
+          min={min}
+          max={max}
+          onPick={(m) => {
+            setOpen(false);
+            if (m !== month) onChange(m);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function MonthPicker({ month, min, max, onPick }: { month: MonthKey; min?: MonthKey; max?: MonthKey; onPick: (m: MonthKey) => void }) {
+  const h = useStore((s) => s.household);
+  const [year, setYear] = useState(parseMonth(month).year);
+  // a dot marks months with real amounts (planned 0 zł bills alone do not count)
+  const marks = useMemo(() => new Set(h.entries.filter((e) => !e.deleted && e.amount > 0).map((e) => e.month)), [h]);
+  const now = currentMonth();
+  return (
+    <div class="month-picker" role="dialog" aria-label="Wybierz miesiąc">
+      <div class="mp-head">
+        <button class="icon-btn ghost" type="button" aria-label="Poprzedni rok" onClick={() => setYear(year - 1)}>
+          <Icon name="left" size={18} />
+        </button>
+        <strong>{year}</strong>
+        <button class="icon-btn ghost" type="button" aria-label="Następny rok" onClick={() => setYear(year + 1)}>
+          <Icon name="right" size={18} />
+        </button>
+      </div>
+      <div class="mp-grid">
+        {MONTHS_SHORT.map((name, i) => {
+          const key = monthKey(year, i + 1);
+          const disabled = (!!min && key < min) || (!!max && key > max);
+          return (
+            <button
+              key={key}
+              type="button"
+              class={`mp-cell${key === month ? ' sel' : ''}${key === now ? ' now' : ''}`}
+              aria-pressed={key === month}
+              aria-label={`${MONTHS[i]} ${year}${key === now ? ', bieżący miesiąc' : ''}`}
+              disabled={disabled}
+              onClick={() => onPick(key)}
+            >
+              {name}
+              {marks.has(key) && <i class="mp-dot" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Swipe left/right to change month. The neighbouring months are drawn on both
+ * sides and follow the finger, so the next card is visible before the swipe
+ * ends. Vertical scrolling stays native (touch-action: pan-y).
+ */
+export function MonthSwiper({ month, onChange, render, label }: { month: MonthKey; onChange: (m: MonthKey) => void; render: (m: MonthKey) => ComponentChildren; label?: string }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ id: number; x: number; y: number; t: number; dx: number; axis: 'x' | 'y' | null } | null>(null);
+  const dragged = useRef(false);
+  const busy = useRef(false);
+
+  const move = (px: number, ms: number) => {
+    const el = track.current;
+    if (!el) return;
+    el.style.transition = ms ? `transform ${ms}ms cubic-bezier(0.2, 0.8, 0.2, 1)` : 'none';
+    el.style.transform = px ? `translate3d(${px}px, 0, 0)` : '';
+  };
+
+  // the new month is in the middle pane: snap back without animation
+  useLayoutEffect(() => {
+    move(0, 0);
+    busy.current = false;
+  }, [month]);
+
+  const onDown = (e: PointerEvent) => {
+    if (busy.current || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, axis: null };
+    dragged.current = false;
+  };
+  const onMove = (e: PointerEvent) => {
+    const d = drag.current;
+    if (!d || e.pointerId !== d.id) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (!d.axis) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      d.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+      if (d.axis === 'x') {
+        try {
+          wrap.current?.setPointerCapture(e.pointerId);
+        } catch {
+          /* capture is a nicety */
+        }
+      }
+    }
+    if (d.axis !== 'x') return;
+    dragged.current = true;
+    d.dx = dx;
+    move(dx, 0);
+  };
+  const onUp = () => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d || d.axis !== 'x') return;
+    const w = wrap.current?.clientWidth ?? 360;
+    const speed = Math.abs(d.dx) / Math.max(1, performance.now() - d.t); // px per ms
+    const go = Math.abs(d.dx) > w * 0.25 || (speed > 0.45 && Math.abs(d.dx) > 30);
+    if (!go) {
+      move(0, 220);
+      return;
+    }
+    const dir = d.dx < 0 ? 1 : -1;
+    busy.current = true;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) {
+      onChange(addMonths(month, dir));
+      return;
+    }
+    move(-dir * w, 260);
+    window.setTimeout(() => onChange(addMonths(month, dir)), 260);
+  };
+  const onCancel = () => {
+    if (drag.current?.axis === 'x') move(0, 200);
+    drag.current = null;
+  };
+
+  const side = { 'aria-hidden': 'true', inert: true } as Record<string, unknown>;
+  return (
+    <div
+      class="swiper"
+      ref={wrap}
+      aria-label={label}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerCancel={onCancel}
+      onClickCapture={(e) => {
+        // a swipe that ends on a button must not press it
+        if (dragged.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          dragged.current = false;
+        }
+      }}
+    >
+      <div class="swiper-track" ref={track}>
+        <div class="swiper-pane prev" {...side}>
+          {render(addMonths(month, -1))}
+        </div>
+        <div class="swiper-pane">{render(month)}</div>
+        <div class="swiper-pane next" {...side}>
+          {render(addMonths(month, 1))}
+        </div>
+      </div>
     </div>
   );
 }

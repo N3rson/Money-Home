@@ -1943,3 +1943,154 @@ details.howto .steps {
   background: color-mix(in srgb, var(--bad) 10%, var(--surface));
   border-color: color-mix(in srgb, var(--bad) 45%, transparent);
 }
+
+/* ------------------------------------------------------------------ month picker */
+.month-nav {
+  position: relative;
+}
+button.label {
+  display: grid;
+  justify-items: center;
+  line-height: 1.15;
+  padding: 2px 10px;
+  border-radius: 12px;
+  color: inherit;
+}
+button.label:hover {
+  background: var(--surface-2);
+}
+.month-nav .label span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.nav-caret {
+  color: var(--ink-3);
+  transition: transform 0.2s;
+}
+.nav-caret.open {
+  transform: rotate(180deg);
+}
+.month-picker {
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.35);
+  animation: rise 0.18s ease-out both;
+}
+.mp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mp-head strong {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+}
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.mp-cell {
+  position: relative;
+  height: 46px;
+  border-radius: 12px;
+  font-weight: 500;
+  font-size: 14.5px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+}
+.mp-cell:hover {
+  color: var(--ink);
+}
+.mp-cell.now {
+  box-shadow: inset 0 0 0 1.5px var(--oak);
+  color: var(--ink);
+}
+.mp-cell.sel {
+  background: var(--ink);
+  color: var(--on-ink);
+  box-shadow: none;
+}
+.mp-cell:disabled {
+  opacity: 0.35;
+}
+.mp-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--moss);
+}
+.mp-cell.sel .mp-dot {
+  background: var(--on-ink);
+}
+
+/* ------------------------------------------------------------------ month swiper */
+.swiper {
+  position: relative;
+  margin-inline: -16px;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+@supports (overflow: clip) {
+  .swiper {
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+}
+.swiper-track {
+  position: relative;
+  will-change: transform;
+}
+.swiper-pane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding-inline: 16px;
+  box-sizing: border-box;
+  width: 100%;
+}
+.swiper-pane.prev,
+.swiper-pane.next {
+  position: absolute;
+  top: 0;
+}
+.swiper-pane.prev {
+  right: 100%;
+}
+.swiper-pane.next {
+  left: 100%;
+}
+.money.zero {
+  color: var(--ink-3);
+}
+
+/* settings: fixed bill row with "co miesiąc" switch */
+.cat-row {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+.cat-recurring {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+.cat-recurring .switch {
+  transform: scale(0.85);
+}
