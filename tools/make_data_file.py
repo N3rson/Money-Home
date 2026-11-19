@@ -3,7 +3,7 @@
 
   python3 -I tools/xlsx_to_json.py budget.xlsx seed.json
   python3 -I tools/make_data_file.py seed.json budzet.json \
-      --rate 6.13 --fixed-until 2030-12 --term 360 \
+      --rate 7.25 --fixed-until 2029-06 --term 360 \
       --balance 480000.00 --balance-month 2026-10 --remaining 300
 
 The output is what the app keeps in the private repository ("Wczytaj dane z pliku"

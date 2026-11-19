@@ -33,7 +33,7 @@ function household(entries: Entry[]): Household {
 }
 
 describe('planned entries', () => {
-  const hist = [e('m10', '2026-10', { category: 'mortgage', amount: 316394 }), e('r10', '2026-10', { amount: 65937 })];
+  const hist = [e('m10', '2026-10', { category: 'mortgage', amount: 280000 }), e('r10', '2026-10', { amount: 52000 })];
 
   it('plans every fixed bill at 0 zł in the new month', () => {
     const p = plannedEntries(household(hist), '2026-11');
@@ -57,19 +57,19 @@ describe('planned entries', () => {
   });
 
   it('continues installments up to the planned count', () => {
-    const tv = (i: number, month: string): Entry => e(`tv${i}`, month, { type: 'expense', category: undefined, title: 'TV', amount: 44814, series: { id: 'tv', index: i, count: 10 } });
-    const h = household([...hist, tv(7, '2026-09'), tv(8, '2026-10')]);
+    const inst = (i: number, month: string): Entry => e(`p${i}`, month, { type: 'expense', category: undefined, title: 'Pralka', amount: 39900, series: { id: 'pralka', index: i, count: 10 } });
+    const h = household([...hist, inst(7, '2026-09'), inst(8, '2026-10')]);
     const p = plannedEntries(h, '2026-11').filter((x) => x.series);
     expect(p.map((x) => [x.month, x.series!.index, x.amount, x.title])).toEqual([
-      ['2026-11', 9, 44814, 'TV'],
-      ['2026-12', 10, 44814, 'TV'],
+      ['2026-11', 9, 39900, 'Pralka'],
+      ['2026-12', 10, 39900, 'Pralka'],
     ]);
   });
 
   it('never plans a deleted installment again', () => {
-    const tv8 = e('tv8', '2026-10', { type: 'expense', title: 'TV', series: { id: 'tv', index: 8, count: 10 } });
-    const gone = e('auto-tv-9', '2026-11', { type: 'expense', title: 'TV', series: { id: 'tv', index: 9, count: 10 }, deleted: true });
-    const p = plannedEntries(household([...hist, tv8, gone]), '2026-11').filter((x) => x.series);
+    const inst8 = e('p8', '2026-10', { type: 'expense', title: 'Pralka', series: { id: 'pralka', index: 8, count: 10 } });
+    const gone = e('auto-pralka-9', '2026-11', { type: 'expense', title: 'Pralka', series: { id: 'pralka', index: 9, count: 10 }, deleted: true });
+    const p = plannedEntries(household([...hist, inst8, gone]), '2026-11').filter((x) => x.series);
     expect(p.map((x) => x.series!.index)).toEqual([10]);
   });
 
@@ -92,12 +92,12 @@ describe('month helpers', () => {
   });
 
   it('a planned 0 zł installment is not the last paid one', () => {
-    const h = household([e('m10', '2026-10', { category: 'mortgage', amount: 316394 }), e('m11', '2026-11', { category: 'mortgage', amount: 0 })]);
-    expect(lastInstallment(h, '2026-11')).toEqual({ month: '2026-10', amount: 316394 });
+    const h = household([e('m10', '2026-10', { category: 'mortgage', amount: 280000 }), e('m11', '2026-11', { category: 'mortgage', amount: 0 })]);
+    expect(lastInstallment(h, '2026-11')).toEqual({ month: '2026-10', amount: 280000 });
   });
 
   it('suggests the last amount for planned bills', () => {
-    const h = household([e('r10', '2026-10', { amount: 65937 }), e('auto-2026-11-rent', '2026-11', { amount: 0 })]);
-    expect(billsToFill(h, '2026-11')).toEqual([{ category: 'rent', entryId: 'auto-2026-11-rent', suggestion: 65937, fromMonth: '2026-10' }]);
+    const h = household([e('r10', '2026-10', { amount: 52000 }), e('auto-2026-11-rent', '2026-11', { amount: 0 })]);
+    expect(billsToFill(h, '2026-11')).toEqual([{ category: 'rent', entryId: 'auto-2026-11-rent', suggestion: 52000, fromMonth: '2026-10' }]);
   });
 });

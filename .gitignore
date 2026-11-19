@@ -11,3 +11,10 @@ android/build/
 android/.gradle/
 *.keystore
 *.jks
+# Klucze, certyfikaty i hasła — nigdy w repo z kodem
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+signing.properties

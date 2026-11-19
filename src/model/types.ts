@@ -73,7 +73,7 @@ export interface MortgageParams {
    * remaining principal and (optionally) how many installments are left.
    */
   balance?: { amount: number; month: MonthKey; remaining?: number } | null;
-  /** Last month of a fixed-rate period, e.g. '2030-12'. */
+  /** Last month of a fixed-rate period, e.g. '2029-06'. */
   rateFixedUntil?: MonthKey | null;
   /** False until the parameters were checked against the loan agreement. */
   confirmed: boolean;

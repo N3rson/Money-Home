@@ -50,7 +50,7 @@ function trim(n: number): string {
 
 /**
  * Parse what people type: "1 234,56", "1234.56", "1.234,56", "3 500" and simple
- * sums like "1112,18 + 348,94" (the spreadsheet had such formulas).
+ * sums like "1200 + 349,90" (as in spreadsheet formulas).
  * Returns grosze or null when the text is not a number.
  */
 export function parseAmount(input: string): number | null {
